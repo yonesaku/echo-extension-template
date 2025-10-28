@@ -13,6 +13,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.echo.common)
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("net.jthink:jaudiotagger:3.0.1")
 }
 
 java {
