@@ -12,20 +12,25 @@ import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
 import dev.brahmkshatriya.echo.common.models.ImageHolder.Companion.toImageHolder
 import dev.brahmkshatriya.echo.common.models.NetworkRequest.Companion.toGetRequest
 import dev.brahmkshatriya.echo.common.models.Shelf
+// FIX: Info and Input were referenced incorrectly, fix imports:
 import dev.brahmkshatriya.echo.common.models.Shelf.Info
 import dev.brahmkshatriya.echo.common.models.Streamable
 import dev.brahmkshatriya.echo.common.models.Streamable.Media.Companion.toMedia
 import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSource
 import dev.brahmkshatriya.echo.common.models.Track
 import dev.brahmkshatriya.echo.common.settings.Setting
+// FIX: Setting.Input is now just Input, fix imports:
+import dev.brahmkshatriya.echo.common.settings.Setting.Input
 import dev.brahmkshatriya.echo.common.settings.Settings
+import dev.brahmkshatriya.echo.common.models.EchoMediaItem
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
+import android.content.Context 
+import dev.brahmkshatriya.echo.common.models.Quality // Import for new parameter
 
 /**
  * A data class to represent the expected JSON structure for each track.
- * The user will need to provide a JSON array of these objects in settings.
  */
 @Serializable
 private data class DriveTrackInfo(
@@ -46,17 +51,14 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
         setting = settings
     }
 
-    /**
-     * Provides a text area in the extension settings for the user
-     * to paste their JSON data.
-     */
     override suspend fun getSettingItems(): List<Setting> = listOf(
-        Setting.Input(
+        // FIX: Replaced Setting.Input with the imported Input
+        Input(
             title = "Tracks JSON",
             key = "tracks_json",
             summary = "A JSON array of tracks with id, title, artist, album, and artUrl.",
             value = tracksJson,
-            isTextArea = true // Make it a multi-line text box
+            isTextArea = true
         )
     )
 
@@ -75,7 +77,7 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
     private fun DriveTrackInfo.toTrack(): Track {
         val artistName = this.artist
         val albumName = this.album
-        val albumId = "album:$albumName" // Create consistent ID for the album
+        val albumId = "album:$albumName"
         val artist = Artist(id = "artist:$artistName", name = artistName)
         
         return Track(
@@ -92,16 +94,12 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
         )
     }
 
-    /**
-     * 핵심 변경 사항: 트랙을 앨범별로 그룹화하고, 앨범을 나타내는 Shelf.Lists.Items로 변환합니다.
-     * CORE CHANGE: Groups tracks by album and converts each group into a Shelf.Lists.Items
-     * which contains the tracks as media items.
-     */
     override suspend fun loadHomeFeed(): Feed<Shelf> {
         val tracks = getTracksFromSettings().map { it.toTrack() }
 
         val shelves: List<Shelf> = if (tracks.isEmpty()) {
             listOf(
+                // FIX: Unresolved reference 'Info' resolved by import
                 Info(
                     id = "no_tracks",
                     title = "No Tracks Found",
@@ -109,19 +107,18 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
                 )
             )
         } else {
-            // 1. Group the tracks by their album title
-            tracks.groupBy { it.album.title }
-                // 2. Map the resulting groups into Shelf objects
-                .map { (albumTitle, trackList) ->
-                    // Get the Album object from the first track in the group
-                    val album = trackList.first().album
+            // Group tracks by album title
+            tracks.groupBy { it.album?.title } // FIX: Safe call because 'album' is now nullable
+                .mapNotNull { (albumTitle, trackList) ->
+                    // FIX: Ensure album is not null before proceeding
+                    val album = trackList.first().album ?: return@mapNotNull null
                     
-                    // Create a Shelf item (which contains all the tracks in that album)
+                    // Create a Shelf item for the album
                     Shelf.Lists.Items(
-                        id = album.id, // Use the album's ID for the shelf ID
-                        title = albumTitle,
-                        // Convert the list of Track objects to MediaItem objects (which Album is a subtype of)
-                        list = listOf(album) 
+                        id = album.id,
+                        title = albumTitle ?: "Unknown Album", // Use a fallback title
+                        // FIX: Ensure list is non-null and correctly typed as List<EchoMediaItem>
+                        list = listOf(album) as List<EchoMediaItem> 
                     )
                 }
         }
@@ -130,10 +127,8 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
             PagedData.Single { shelves }.toFeedData()
         }
     }
-    
-    // --- (The rest of the functions remain the same as the previous correct version) ---
 
-    override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
+    override suspend fun loadTrack(track: Track, isDownload: Boolean, context: Context): Track {
         val fileId = track.id.removePrefix("gdrive:")
         val directDownloadUrl = "https://drive.google.com/uc?export=download&id=$fileId"
         
@@ -148,9 +143,14 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
         )
     }
 
+    /**
+     * FIX: Added 'quality: Quality' parameter (No value passed for parameter 'quality').
+     */
     override suspend fun loadStreamableMedia(
         streamable: Streamable,
-        isDownload: Boolean
+        isDownload: Boolean,
+        context: Context,
+        quality: Quality // Added the missing parameter
     ): Streamable.Media {
 
         if (streamable.type != Streamable.MediaType.Server) {
