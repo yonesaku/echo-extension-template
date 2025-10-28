@@ -6,42 +6,38 @@ import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
 import dev.brahmkshatriya.echo.common.helpers.ClientException
 import dev.brahmkshatriya.echo.common.helpers.PagedData
+import dev.brahmkshatriya.echo.common.helpers.Extensions.* // ✨ CORRECTED: Added this crucial import
 import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.NetworkRequest.Companion.toGetRequest
 import dev.brahmkshatriya.echo.common.models.Streamable.Media.Companion.toMedia
 import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSource
-import dev.brahmkshatriya.echo.common.settings.SettingHeader // CORRECTED: Added import
+import dev.brahmkshatriya.echo.common.settings.SettingHeader 
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
-import net.jthink.jaudiotagger.audio.AudioFileIO // CORRECTED: Added import
+import net.jthink.jaudiotagger.audio.AudioFileIO 
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
-// The class name might be different in your actual build file (TestExtension.kt) but this is the functional class name
 class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, AlbumClient {
 
     private val client = OkHttpClient()
-    
-    // In-memory cache for metadata (File ID -> Metadata)
     private val metadataCache = ConcurrentHashMap<String, FileMetadata>()
 
-    // Required by the extension framework
     lateinit var setting: Settings
     override fun setSettings(settings: Settings) {
         setting = settings
     }
     
-    // Setting state retrieved from the framework
     private val metadataExtractionEnabled get() = setting.getBoolean("extract_metadata") ?: true
 
 
     // --- 1. Custom Extension Settings ---
 
     override suspend fun getSettingItems() = listOf(
-        SettingHeader("Google Drive Link Settings"), // CORRECTED: SettingHeader is now resolved
+        SettingHeader("Google Drive Link Settings"), 
         SettingSwitch(
             "Extract Metadata & Cache",
             "extract_metadata",
@@ -73,26 +69,23 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
             metadata = extracted.metadata
         }
         
-        // CORRECTED: Track constructor requires explicit arguments
         return Track(
             id = pastedUrl,
-            // sourceId parameter REMOVED based on error, using simple ID instead
             title = metadata.title,
-            artists = listOf(Artist(metadata.artist, metadata.artist, null, null)), // CORRECTED: 'artist' is now 'artists' list
-            album = Album( // CORRECTED: 'album' parameter expects an Album object
+            artists = listOf(Artist(metadata.artist, metadata.artist, null, null)),
+            album = Album( 
                 id = metadata.album.hashCode().toString(),
                 title = metadata.album,
                 artist = metadata.artist,
                 type = Album.Type.Album,
                 cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) },
-                trackCount = 0L // Placeholder
+                trackCount = 0L
             ),
-            cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) }, // CORRECTED: ImageHolder constructor
+            cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) }, 
             streamable = Streamable(
                 id = fileId, 
                 type = Streamable.MediaType.Server,
-                extras = mapOf("file_id" to fileId),
-                // quality parameter REMOVED based on error
+                extras = mapOf("file_id" to fileId)
             )
         )
     }
@@ -109,21 +102,20 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
 
         val directStreamUrl = resolveGoogleDriveStream(fileId)
 
-        // CORRECTED: toSource(id) is the correct signature for an HTTP source
         return Streamable.Source.Http(
             request = directStreamUrl.toGetRequest()
         ).toSource(fileId).toMedia()
     }
     
-    // CORRECTED: loadFeed(track: Track) implementation added to satisfy TrackClient interface
+    // Stub implementation to fulfill the interface contract
     override suspend fun loadFeed(track: Track): Feed<Shelf>? = null
 
 
-    // --- 4. HomeFeedClient Implementation ---
+    // --- 3. HomeFeedClient Implementation ---
 
     override suspend fun loadHomeFeed(): Feed<Shelf> {
         if (!metadataExtractionEnabled) {
-            return Feed(listOf()) { PagedData.Single { emptyList() }.toFeedData() } // CORRECTED: toFeedData usage is correct
+            return Feed(listOf()).toFeed() // CORRECTED: Using .toFeed() from Extensions
         }
 
         val albums = metadataCache.values
@@ -133,10 +125,9 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
                 val albumId = "gdrive_album:${albumTitle.hashCode()}" 
                 
                 val cover = tracks.first().coverArtUrl?.let { 
-                    ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) // CORRECTED: ImageHolder constructor
+                    ImageHolder.NetworkRequestImageHolder(it.toGetRequest())
                 }
 
-                // CORRECTED: Album constructor updated
                 Album(
                     id = albumId,
                     title = albumTitle,
@@ -147,56 +138,50 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
                 ).toShelf() 
             }
         
-        if (albums.isEmpty()) return Feed(listOf()) { PagedData.Single { emptyList() }.toFeedData() }
+        if (albums.isEmpty()) return Feed(listOf()).toFeed()
         
-        return Feed(listOf()) {
-            PagedData.Single {
-                // CORRECTED: 'list' is a property of Shelf.Lists.Items
-                listOf(
-                    Shelf.Lists.Items(
-                        id = "gdrive_albums",
-                        title = "Pasted Drive Albums",
-                        list = albums.map { it.list.first() } 
-                    )
+        return Feed(
+            shelves = listOf(
+                Shelf.Lists.Items(
+                    id = "gdrive_albums",
+                    title = "Pasted Drive Albums",
+                    list = albums.map { it.list.first() } 
                 )
-            }.toFeedData() // CORRECTED: toFeedData is correctly used
-        }
+            )
+        ).toFeed() // CORRECTED: Using .toFeed() from Extensions
     }
 
 
-    // --- 5. AlbumClient Implementation ---
+    // --- 4. AlbumClient Implementation ---
 
     override suspend fun loadAlbum(album: Album): Album {
         return album
     }
 
-    // CORRECTED: loadFeed(album: Album) implementation added to satisfy AlbumClient interface
+    // Stub implementation to fulfill the interface contract
     override suspend fun loadFeed(album: Album): Feed<Shelf>? = null 
 
-    override suspend fun loadTracks(album: Album) = PagedData.Companion.paged { offset -> // CORRECTED: paged needs to be accessed via Companion
+    override suspend fun loadTracks(album: Album) = paged { // CORRECTED: Removed unused 'offset' parameter
         val tracksInAlbum = metadataCache.values
             .filter { it.album == album.title }
             .map { metadata ->
-                // CORRECTED: Track constructor requires explicit arguments
                 Track(
                     id = metadata.originalUrl, 
-                    // sourceId parameter REMOVED
                     title = metadata.title,
-                    artists = listOf(Artist(metadata.artist, metadata.artist, null, null)), // CORRECTED: 'artist' is now 'artists' list
-                    album = Album( // CORRECTED: 'album' parameter expects an Album object
+                    artists = listOf(Artist(metadata.artist, metadata.artist, null, null)), 
+                    album = Album(
                         id = metadata.album.hashCode().toString(),
                         title = metadata.album,
                         artist = metadata.artist,
                         type = Album.Type.Album,
-                        cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) }, // CORRECTED: ImageHolder constructor
-                        trackCount = 0L // Placeholder
+                        cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) },
+                        trackCount = 0L 
                     ), 
                     cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) },
                     streamable = Streamable(
                         id = metadata.fileId!!, 
                         type = Streamable.MediaType.Server,
                         extras = mapOf("file_id" to metadata.fileId!!) 
-                        // quality parameter REMOVED
                     )
                 )
             }
@@ -205,7 +190,7 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
     }.toFeed()
 
 
-    // --- 6. Metadata Extraction Logic (The Complex Part) ---
+    // --- 5. Metadata Extraction Logic ---
 
     data class FileMetadata(
         var title: String,
@@ -218,7 +203,6 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
     
     private data class MetadataExtractionResult(val metadata: FileMetadata, val success: Boolean)
 
-    // CORRECTED: const val must be inside a companion object or top level
     companion object {
         private const val FILE_HEADER_SIZE = 500 * 1024 
     }
@@ -244,17 +228,14 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
                     }
                 }
                 
-                // Use JAudioTagger to read the tags
-                val audioFile = AudioFileIO.read(tempFile) // CORRECTED: AudioFileIO is now resolved
+                val audioFile = AudioFileIO.read(tempFile)
                 val tag = audioFile.tag
                 
-                // CORRECTED: Using takeIf and elvis operator correctly to provide fallbacks
                 val title = tag.firstTitle.takeIf { !it.isNullOrBlank() } ?: extractTitlePlaceholder(originalUrl)
                 val artist = tag.firstArtist.takeIf { !it.isNullOrBlank() } ?: "Unknown Artist"
                 val album = tag.firstAlbum.takeIf { !it.isNullOrBlank() } ?: "Pasted Links"
                 
                 val coverArtUrl = tag.firstArtwork?.let { artwork ->
-                    // CORRECTED: Using mimeType and binaryData which are properties of Artwork
                     "data:${artwork.mimeType};base64," + java.util.Base64.getEncoder().encodeToString(artwork.binaryData)
                 }
 
@@ -290,7 +271,7 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
     private fun java.io.InputStream.copyTo(out: java.io.OutputStream, limit: Long) {
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var bytesRead = 0L
-        var read: Int // CORRECTED: Variable 'read' must be initialized moved to loop condition
+        var read: Int = 0 // CORRECTED: Initialized 'read'
         while (bytesRead < limit && read(buffer).also { read = it } >= 0) {
             val bytesToWrite = minOf(read.toLong(), limit - bytesRead).toInt()
             out.write(buffer, 0, bytesToWrite)
@@ -299,7 +280,7 @@ class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, Album
     }
 
 
-    // --- 7. Unchanged Helper Functions ---
+    // --- 6. Unchanged Helper Functions ---
 
     private fun extractFileId(url: String): String? {
         val uri = runCatching { URL(url).toURI() }.getOrNull() ?: return null
