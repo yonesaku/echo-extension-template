@@ -38,9 +38,6 @@ private data class DriveTrackInfo(
 
 /**
  * An extension to stream music from public Google Drive links.
- *
- * This extension requires the user to provide a JSON blob in settings
- * containing the metadata for each track.
  */
 open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
 
@@ -63,58 +60,48 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
         )
     )
 
-    // Safely get the JSON string from settings, defaulting to an empty array.
     private val tracksJson get() = setting.getString("tracks_json") ?: "[]"
-
-    // JSON parser configured to ignore any unknown fields.
     private val json = Json { ignoreUnknownKeys = true }
 
-    /**
-     * Parses the JSON string from settings into a list of [DriveTrackInfo] objects.
-     */
     private fun getTracksFromSettings(): List<DriveTrackInfo> {
         return try {
             json.decodeFromString<List<DriveTrackInfo>>(tracksJson)
         } catch (e: Exception) {
-            // If JSON is malformed, return an empty list and log the error
             e.printStackTrace()
             emptyList()
         }
     }
 
-    /**
-     * Helper function to convert our [DriveTrackInfo] data class
-     * into an [Track] model that Echo understands.
-     */
     private fun DriveTrackInfo.toTrack(): Track {
         val artistName = this.artist
+        val albumName = this.album
+        val albumId = "album:$albumName" // Create consistent ID for the album
+        val artist = Artist(id = "artist:$artistName", name = artistName)
+        
         return Track(
-            id = "gdrive:$id", // Prefix the ID to avoid collisions
+            id = "gdrive:$id",
             title = this.title,
             cover = this.artUrl?.toImageHolder(),
-            artists = listOf(Artist(id = "artist:$artistName", name = artistName)),
+            artists = listOf(artist),
             album = Album(
-                id = "album:${this.album}",
-                title = this.album,
-                // This was the fix for: Argument type mismatch
-                artists = listOf(Artist(id = "artist:$artistName", name = artistName)),
+                id = albumId,
+                title = albumName,
+                artists = listOf(artist),
                 cover = this.artUrl?.toImageHolder()
             )
         )
     }
 
     /**
-     * Loads the main feed for this extension.
-     * It will display a single shelf containing all the tracks
-     * from the user's JSON setting.
+     * 핵심 변경 사항: 트랙을 앨범별로 그룹화하고, 앨범을 나타내는 Shelf.Lists.Items로 변환합니다.
+     * CORE CHANGE: Groups tracks by album and converts each group into a Shelf.Lists.Items
+     * which contains the tracks as media items.
      */
     override suspend fun loadHomeFeed(): Feed<Shelf> {
         val tracks = getTracksFromSettings().map { it.toTrack() }
 
-        // This was the fix for: Return type mismatch
         val shelves: List<Shelf> = if (tracks.isEmpty()) {
             listOf(
-                // This was the fix for: Unresolved reference 'Message'
                 Info(
                     id = "no_tracks",
                     title = "No Tracks Found",
@@ -122,49 +109,45 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
                 )
             )
         } else {
-            listOf(
-                Shelf.Lists.Tracks(
-                    id = "my_gdrive_tracks",
-                    title = "My Google Drive Tracks",
-                    list = tracks
-                )
-            )
+            // 1. Group the tracks by their album title
+            tracks.groupBy { it.album.title }
+                // 2. Map the resulting groups into Shelf objects
+                .map { (albumTitle, trackList) ->
+                    // Get the Album object from the first track in the group
+                    val album = trackList.first().album
+                    
+                    // Create a Shelf item (which contains all the tracks in that album)
+                    Shelf.Lists.Items(
+                        id = album.id, // Use the album's ID for the shelf ID
+                        title = albumTitle,
+                        // Convert the list of Track objects to MediaItem objects (which Album is a subtype of)
+                        list = listOf(album) 
+                    )
+                }
         }
 
-        // Return a Feed with no tabs, just the main content.
         return Feed(tabs = emptyList()) {
             PagedData.Single { shelves }.toFeedData()
         }
     }
+    
+    // --- (The rest of the functions remain the same as the previous correct version) ---
 
-    /**
-     * Called when the app needs to load streamable information for a track.
-     * We attach the [Streamable] object here.
-     */
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
-        // Get the Google Drive File ID from our custom track ID
         val fileId = track.id.removePrefix("gdrive:")
-
-        // Construct the direct download URL for Google Drive
         val directDownloadUrl = "https://drive.google.com/uc?export=download&id=$fileId"
-
-        // This was the fix for: Unresolved reference 'Server'
+        
         val streamable = Streamable(
             id = directDownloadUrl,
-            type = Streamable.MediaType.Server, // 'mediaType' was renamed to 'type'
+            type = Streamable.MediaType.Server,
             extras = emptyMap()
         )
 
-        // Return the track with the streamable information attached
         return track.copy(
             streamables = listOf(streamable)
         )
     }
 
-    /**
-     * Called when the app is ready to play the [Streamable].
-     * This function provides the actual media stream.
-     */
     override suspend fun loadStreamableMedia(
         streamable: Streamable,
         isDownload: Boolean
@@ -174,22 +157,14 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
             throw ClientException.NotSupported("Unsupported streamable type")
         }
 
-        // The streamable.id contains the directDownloadUrl we created in loadTrack
         val url = streamable.id
 
-        // Return a simple HTTP source. Echo will handle the streaming.
-        // No decryption is needed for a public Google Drive link.
         return Streamable.Source.Http(
             request = url.toGetRequest(),
             decryption = null
         ).toMedia()
     }
 
-    /**
-     * This was the fix for: Class 'GoogleDriveExtension' is not abstract
-     * This function is required by TrackClient to load related content.
-     * We have no related content, so we just return null.
-     */
     override suspend fun loadFeed(track: Track): Feed<Shelf>? {
         return null
     }
