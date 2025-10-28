@@ -4,36 +4,35 @@ import dev.brahmkshatriya.echo.common.clients.AlbumClient
 import dev.brahmkshatriya.echo.common.clients.ExtensionClient
 import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
-import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
-import dev.brahmkshatriya.echo.common.helpers.toFeed
-import dev.brahmkshatriya.echo.common.helpers.toImageHolder
-import dev.brahmkshatriya.echo.common.helpers.toShelf
+import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.models.*
-import dev.brahmkshatriya.echo.common.settings.*
+import dev.brahmkshatriya.echo.common.settings.Setting
+import dev.brahmkshatriya.echo.common.settings.SettingTextInput
+import dev.brahmkshatriya.echo.common.settings.SettingSwitch
+import dev.brahmkshatriya.echo.common.settings.Settings
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.jaudiotagger.audio.AudioFileIO
-import org.jaudiotagger.tag.FieldKey
-import java.io.File
-import java.io.FileOutputStream
-import java.util.Base64
 
 class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
     private val httpClient = OkHttpClient()
     private lateinit var settings: Settings
-    private var musicLinks = mutableListOf<String>()
-    private val metadataCache = mutableMapOf<String, TrackMetadata>()
+    private val json = Json { ignoreUnknownKeys = true }
+    
+    private var tracksData = mutableListOf<TrackData>()
     private val albumsCache = mutableMapOf<String, AlbumData>()
 
-    data class TrackMetadata(
+    @Serializable
+    data class TrackData(
+        val fileId: String,
         val title: String,
         val artist: String,
-        val album: String?,
-        val year: String?,
-        val genre: String?,
-        val albumArt: String?,
-        val duration: Long?
+        val album: String,
+        val albumArt: String? = null,
+        val year: String? = null,
+        val genre: String? = null,
+        val duration: Long? = null
     )
 
     data class AlbumData(
@@ -42,22 +41,27 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
         val year: String?,
         val genre: String?,
         val artwork: String?,
-        val trackIds: MutableList<String>
+        val tracks: MutableList<TrackData>
+    )
+
+    @Serializable
+    data class MusicLibrary(
+        val tracks: List<TrackData>
     )
 
     override suspend fun getSettingItems(): List<Setting> {
         return listOf(
             SettingTextInput(
-                key = "drive_links",
-                title = "Google Drive Links",
-                summary = "Paste your Google Drive share links (one per line)",
-                value = ""
+                title = "Music JSON",
+                key = "music_json",
+                summary = "Paste your music library JSON here",
+                defaultValue = ""
             ),
             SettingSwitch(
-                key = "read_metadata",
-                title = "Read Metadata",
-                summary = "Read song info from MP3 files",
-                value = true
+                title = "Enabled",
+                key = "enabled",
+                summary = "Enable the extension",
+                defaultValue = true
             )
         )
     }
@@ -67,20 +71,20 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
     }
 
     override suspend fun onInitialize() {
-        val linksText = settings.getString("drive_links") ?: ""
-        musicLinks = linksText.lines()
-            .filter { it.isNotBlank() }
-            .toMutableList()
+        val jsonText = settings.getString("music_json")
+        if (!jsonText.isNullOrBlank()) {
+            try {
+                val library = json.decodeFromString<MusicLibrary>(jsonText)
+                tracksData = library.tracks.toMutableList()
+                organizeIntoAlbums()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     override suspend fun loadHomeFeed(): Feed<Shelf> {
-        val readMetadata = settings.getBoolean("read_metadata") ?: true
-
-        if (readMetadata && metadataCache.isEmpty()) {
-            musicLinks.forEach { link ->
-                val fileId = extractFileId(link)
-                loadMetadataFromDrive(fileId)
-            }
+        if (albumsCache.isEmpty()) {
             organizeIntoAlbums()
         }
 
@@ -88,18 +92,30 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             Album(
                 id = albumData.name,
                 title = albumData.name,
-                cover = albumData.artwork?.toImageHolder(),
+                cover = albumData.artwork?.let { path ->
+                    ResourceUriImageHolder(uri = "file://$path", crop = false)
+                },
                 artists = listOf(
                     Artist(
                         id = albumData.artist,
                         name = albumData.artist
                     )
                 ),
-                subtitle = "${albumData.year ?: ""} • ${albumData.trackIds.size} tracks"
+                subtitle = buildAlbumSubtitle(albumData)
             )
         }
 
-        return albums.toFeed()
+        // Convert list to PagedData then to Feed
+        val pagedData = PagedData.Single(albums)
+        return Feed(emptyList()) { pagedData.loadFirst() }
+    }
+
+    private fun buildAlbumSubtitle(albumData: AlbumData): String {
+        val parts = mutableListOf<String>()
+        albumData.year?.let { parts.add(it) }
+        albumData.genre?.let { parts.add(it) }
+        parts.add("${albumData.tracks.size} tracks")
+        return parts.joinToString(" • ")
     }
 
     override suspend fun loadAlbum(album: Album): Album {
@@ -113,11 +129,32 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
     override suspend fun loadTracks(album: Album): Feed<Track>? {
         val albumData = albumsCache[album.id] ?: return null
         
-        val tracks = albumData.trackIds.mapIndexed { index, fileId ->
-            createTrackFromMetadata(fileId, index)
+        val tracks = albumData.tracks.map { trackData ->
+            Track(
+                id = trackData.fileId,
+                title = trackData.title,
+                artists = listOf(
+                    Artist(
+                        id = trackData.artist,
+                        name = trackData.artist
+                    )
+                ),
+                album = Album(
+                    id = albumData.name,
+                    title = albumData.name,
+                    cover = albumData.artwork?.let { path ->
+                        ResourceUriImageHolder(uri = "file://$path", crop = false)
+                    }
+                ),
+                duration = trackData.duration,
+                cover = trackData.albumArt?.let { path ->
+                    ResourceUriImageHolder(uri = "file://$path", crop = false)
+                }
+            )
         }
 
-        return tracks.toFeed()
+        val pagedData = PagedData.Single(tracks)
+        return Feed(emptyList()) { pagedData.loadFirst() }
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
@@ -131,10 +168,9 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             duration = track.duration,
             cover = track.cover,
             streamables = listOf(
-                Streamable(
+                Streamable.server(
                     id = track.id,
-                    quality = 320,
-                    type = Streamable.MediaType.Audio
+                    quality = 320
                 )
             )
         )
@@ -145,7 +181,9 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
         isDownload: Boolean
     ): Streamable.Media {
         val directUrl = getDriveDirectUrl(streamable.id)
-        return Streamable.Media.Direct(directUrl)
+        return Streamable.Media.Direct(
+            Streamable.Source.Http(directUrl)
+        )
     }
 
     override suspend fun loadFeed(track: Track): Feed<Shelf>? {
@@ -155,111 +193,65 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
     private fun organizeIntoAlbums() {
         albumsCache.clear()
 
-        metadataCache.forEach { (fileId, metadata) ->
-            val albumName = metadata.album ?: "Unknown Album"
-            val artistName = metadata.artist
+        tracksData.forEach { trackData ->
+            val albumName = trackData.album
+            val artistName = trackData.artist
 
             val albumData = albumsCache.getOrPut(albumName) {
                 AlbumData(
                     name = albumName,
                     artist = artistName,
-                    year = metadata.year,
-                    genre = metadata.genre,
-                    artwork = metadata.albumArt,
-                    trackIds = mutableListOf()
+                    year = trackData.year,
+                    genre = trackData.genre,
+                    artwork = trackData.albumArt,
+                    tracks = mutableListOf()
                 )
             }
-            albumData.trackIds.add(fileId)
+            albumData.tracks.add(trackData)
         }
-    }
-
-    private suspend fun loadMetadataFromDrive(fileId: String) {
-        try {
-            val directUrl = getDriveDirectUrl(fileId)
-            
-            val request = Request.Builder()
-                .url(directUrl)
-                .header("Range", "bytes=0-524288")
-                .build()
-
-            val response = httpClient.newCall(request).await()
-            
-            if (response.isSuccessful) {
-                val bytes = response.body?.bytes() ?: return
-                
-                val tempFile = File.createTempFile("temp_audio_", ".mp3")
-                FileOutputStream(tempFile).use { it.write(bytes) }
-                
-                val audioFile = AudioFileIO.read(tempFile)
-                val tag = audioFile.tag
-                
-                val title = tag?.getFirst(FieldKey.TITLE) ?: "Unknown Title"
-                val artist = tag?.getFirst(FieldKey.ARTIST) ?: "Unknown Artist"
-                val album = tag?.getFirst(FieldKey.ALBUM)
-                val year = tag?.getFirst(FieldKey.YEAR)
-                val genre = tag?.getFirst(FieldKey.GENRE)
-                val duration = audioFile.audioHeader?.trackLength?.toLong()
-                
-                var albumArtUrl: String? = null
-                val artwork = tag?.firstArtwork
-                if (artwork != null) {
-                    val artBytes = artwork.binaryData
-                    albumArtUrl = "data:image/jpeg;base64," + 
-                        Base64.getEncoder().encodeToString(artBytes)
-                }
-                
-                metadataCache[fileId] = TrackMetadata(
-                    title = title,
-                    artist = artist,
-                    album = album,
-                    year = year,
-                    genre = genre,
-                    albumArt = albumArtUrl,
-                    duration = duration
-                )
-                
-                tempFile.delete()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun createTrackFromMetadata(fileId: String, index: Int): Track {
-        val metadata = metadataCache[fileId]
-        
-        return Track(
-            id = fileId,
-            title = metadata?.title ?: "Track ${index + 1}",
-            artists = listOf(
-                Artist(
-                    id = metadata?.artist ?: "unknown",
-                    name = metadata?.artist ?: "Unknown Artist"
-                )
-            ),
-            album = metadata?.album?.let { 
-                Album(
-                    id = it,
-                    title = it,
-                    cover = metadata.albumArt?.toImageHolder()
-                )
-            },
-            duration = metadata?.duration,
-            cover = metadata?.albumArt?.toImageHolder()
-        )
-    }
-
-    private fun extractFileId(link: String): String {
-        var fileId = link.substringAfter("/file/d/").substringBefore("/")
-        
-        if (fileId == link) {
-            fileId = link.substringAfter("id=").substringBefore("&")
-        }
-        
-        return fileId
     }
 
     private fun getDriveDirectUrl(fileId: String): String {
         return "https://drive.google.com/uc?export=download&id=$fileId"
     }
 }
+
+/*
+ * DEPENDENCIES in build.gradle.kts:
+ * implementation("com.squareup.okhttp3:okhttp:4.11.0")
+ * implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+ * 
+ * EXAMPLE JSON TO PASTE IN SETTINGS:
+ * 
+ * {
+ *   "tracks": [
+ *     {
+ *       "fileId": "1ABC123XYZ",
+ *       "title": "Hey Jude",
+ *       "artist": "The Beatles",
+ *       "album": "Hey Jude",
+ *       "albumArt": "/storage/emulated/0/Music/heyjude.jpg",
+ *       "year": "1968",
+ *       "genre": "Rock",
+ *       "duration": 431
+ *     },
+ *     {
+ *       "fileId": "1DEF456UVW",
+ *       "title": "Let It Be",
+ *       "artist": "The Beatles",
+ *       "album": "Let It Be",
+ *       "albumArt": "/storage/emulated/0/Music/letitbe.jpg",
+ *       "year": "1970",
+ *       "genre": "Rock",
+ *       "duration": 243
+ *     }
+ *   ]
+ * }
+ * 
+ * FEATURES:
+ * ✅ Simple JSON-based metadata
+ * ✅ Album art from local device
+ * ✅ Streams from Google Drive
+ * ✅ Organized by albums
+ * ✅ No metadata extraction needed!
+ */
