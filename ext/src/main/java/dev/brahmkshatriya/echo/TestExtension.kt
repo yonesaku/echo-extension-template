@@ -45,13 +45,13 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
 
     override suspend fun getSettingItems(): List<Setting> {
         return listOf(
-            Setting.textInput(
+            SettingTextInput(
                 title = "Google Drive Links",
                 key = "drive_links",
                 summary = "Paste your Google Drive share links (one per line)",
                 value = ""
             ),
-            Setting.switch(
+            SettingSwitch(
                 title = "Read Metadata",
                 key = "read_metadata",
                 summary = "Read song info from MP3 files",
@@ -87,11 +87,11 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
 
         val shelves = if (albumsCache.isNotEmpty()) {
             val albums = albumsCache.values.sortedBy { it.name }.map { albumData ->
-                EchoMediaItem.Lists.AlbumItem(
+                AlbumItem(
                     Album(
                         id = albumData.name,
                         title = albumData.name,
-                        cover = albumData.artwork?.let { ImageHolder.URL(it) },
+                        cover = albumData.artwork?.let { ImageHolder.Url(it) },
                         artists = listOf(
                             Artist(
                                 id = albumData.artist,
@@ -104,15 +104,16 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             }
 
             listOf(
-                Shelf.Lists.Items(
+                Shelf(
                     title = "Albums",
                     list = albums
                 )
             )
         } else emptyList()
 
-        return Feed.Single { shelves }
+        return Feed(shelves)
     }
+
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
         val parts = mutableListOf<String>()
@@ -159,7 +160,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             createTrackFromMetadata(fileId, index)
         }
 
-        return Feed.Single { tracks }
+        return Feed(tracks)
     }
 
     // TrackClient methods
@@ -172,7 +173,8 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             album = track.album,
             duration = track.duration,
             cover = track.cover,
-            audioUrl = directUrl
+            stream = Streamable.Media.Direct(directUrl)
+
         )
     }
 
@@ -256,11 +258,11 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
                 Album(
                     id = it,
                     title = it,
-                    cover = metadata.albumArt?.let { art -> ImageHolder.URL(art) }
+                    cover = metadata.albumArt?.let { art -> ImageHolder.Url(art) }
                 )
             },
             duration = metadata?.duration,
-            cover = metadata?.albumArt?.let { ImageHolder.URL(it) }
+            cover = metadata?.albumArt?.let { ImageHolder.Url(it) }
         )
     }
 
