@@ -1,303 +1,182 @@
-package dev.brahmkshatriya.echo.extension.googledrive
+package dev.brahmkshatriya.echo.extension
 
-import dev.brahmkshatriya.echo.common.clients.AlbumClient
 import dev.brahmkshatriya.echo.common.clients.ExtensionClient
 import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
 import dev.brahmkshatriya.echo.common.helpers.ClientException
 import dev.brahmkshatriya.echo.common.helpers.PagedData
-import dev.brahmkshatriya.echo.common.helpers.Extensions.* // ✨ CORRECTED: Added this crucial import
-import dev.brahmkshatriya.echo.common.models.*
+import dev.brahmkshatriya.echo.common.models.Album
+import dev.brahmkshatriya.echo.common.models.Artist
+import dev.brahmkshatriya.echo.common.models.Feed
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
+import dev.brahmkshatriya.echo.common.models.ImageHolder.Companion.toImageHolder
 import dev.brahmkshatriya.echo.common.models.NetworkRequest.Companion.toGetRequest
+import dev.brahmkshatriya.echo.common.models.Shelf
+import dev.brahmkshatriya.echo.common.models.Streamable
 import dev.brahmkshatriya.echo.common.models.Streamable.Media.Companion.toMedia
 import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSource
-import dev.brahmkshatriya.echo.common.settings.SettingHeader 
-import dev.brahmkshatriya.echo.common.settings.SettingSwitch
+import dev.brahmkshatriya.echo.common.models.Track
+import dev.brahmkshatriya.echo.common.settings.SettingInput
 import dev.brahmkshatriya.echo.common.settings.Settings
-import net.jthink.jaudiotagger.audio.AudioFileIO 
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.File
-import java.net.URL
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 
-class GoogleDriveExtension : ExtensionClient, TrackClient, HomeFeedClient, AlbumClient {
+/**
+ * A data class to represent the expected JSON structure for each track.
+ * The user will need to provide a JSON array of these objects in settings.
+ */
+@Serializable
+private data class DriveTrackInfo(
+    val id: String, // Google Drive File ID
+    val title: String,
+    val artist: String,
+    val album: String,
+    val artUrl: String? = null // Optional URL for album art
+)
 
-    private val client = OkHttpClient()
-    private val metadataCache = ConcurrentHashMap<String, FileMetadata>()
+/**
+ * An extension to stream music from public Google Drive links.
+ *
+ * This extension requires the user to provide a JSON blob in settings
+ * containing the metadata for each track.
+ */
+open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
 
     lateinit var setting: Settings
     override fun setSettings(settings: Settings) {
         setting = settings
     }
-    
-    private val metadataExtractionEnabled get() = setting.getBoolean("extract_metadata") ?: true
 
-
-    // --- 1. Custom Extension Settings ---
-
+    /**
+     * Provides a text area in the extension settings for the user
+     * to paste their JSON data.
+     */
     override suspend fun getSettingItems() = listOf(
-        SettingHeader("Google Drive Link Settings"), 
-        SettingSwitch(
-            "Extract Metadata & Cache",
-            "extract_metadata",
-            "Downloads the first 500KB of the file to extract ID3 tags (Title, Album, Art) for better organization on the Home Feed.",
-            metadataExtractionEnabled
+        SettingInput(
+            title = "Tracks JSON",
+            key = "tracks_json",
+            summary = "A JSON array of tracks with id, title, artist, album, and artUrl.",
+            value = tracksJson,
+            isTextArea = true // Make it a multi-line text box
         )
     )
-    
-    // --- 2. TrackClient Implementation ---
 
-    override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
-        val pastedUrl = track.id
-        val fileId = extractFileId(pastedUrl)
-            ?: throw ClientException.NotSupported("Invalid Google Drive URL or missing file ID.")
+    // Safely get the JSON string from settings, defaulting to an empty array.
+    private val tracksJson get() = setting.getString("tracks_json") ?: "[]"
 
-        var metadata = metadataCache[fileId] ?: FileMetadata(
-            title = extractTitlePlaceholder(pastedUrl),
-            artist = "Google Drive",
-            album = "Pasted Links",
-            coverArtUrl = null,
-            fileId = fileId,
-            originalUrl = pastedUrl
-        )
-        
-        if (metadataExtractionEnabled && metadataCache[fileId] == null) {
-            val resolvedUrl = resolveGoogleDriveStream(fileId)
-            val extracted = extractMetadata(resolvedUrl, fileId, pastedUrl)
-            metadataCache[fileId] = extracted.metadata
-            metadata = extracted.metadata
-        }
-        
-        return Track(
-            id = pastedUrl,
-            title = metadata.title,
-            artists = listOf(Artist(metadata.artist, metadata.artist, null, null)),
-            album = Album( 
-                id = metadata.album.hashCode().toString(),
-                title = metadata.album,
-                artist = metadata.artist,
-                type = Album.Type.Album,
-                cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) },
-                trackCount = 0L
-            ),
-            cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) }, 
-            streamable = Streamable(
-                id = fileId, 
-                type = Streamable.MediaType.Server,
-                extras = mapOf("file_id" to fileId)
-            )
-        )
-    }
+    // JSON parser configured to ignore any unknown fields.
+    private val json = Json { ignoreUnknownKeys = true }
 
-    override suspend fun loadStreamableMedia(
-        streamable: Streamable, isDownload: Boolean,
-    ): Streamable.Media {
-        if (streamable.type != Streamable.MediaType.Server) {
-            throw IllegalStateException("Unsupported Streamable type: ${streamable.type}")
-        }
-        
-        val fileId = streamable.extras["file_id"]
-            ?: throw ClientException.NotSupported("Missing file ID in streamable extras.")
-
-        val directStreamUrl = resolveGoogleDriveStream(fileId)
-
-        return Streamable.Source.Http(
-            request = directStreamUrl.toGetRequest()
-        ).toSource(fileId).toMedia()
-    }
-    
-    // Stub implementation to fulfill the interface contract
-    override suspend fun loadFeed(track: Track): Feed<Shelf>? = null
-
-
-    // --- 3. HomeFeedClient Implementation ---
-
-    override suspend fun loadHomeFeed(): Feed<Shelf> {
-        if (!metadataExtractionEnabled) {
-            return Feed(listOf()).toFeed() // CORRECTED: Using .toFeed() from Extensions
-        }
-
-        val albums = metadataCache.values
-            .filter { it.album != "Pasted Links" }
-            .groupBy { it.album }
-            .map { (albumTitle, tracks) ->
-                val albumId = "gdrive_album:${albumTitle.hashCode()}" 
-                
-                val cover = tracks.first().coverArtUrl?.let { 
-                    ImageHolder.NetworkRequestImageHolder(it.toGetRequest())
-                }
-
-                Album(
-                    id = albumId,
-                    title = albumTitle,
-                    artist = tracks.first().artist,
-                    cover = cover,
-                    type = Album.Type.Album,
-                    trackCount = tracks.size.toLong()
-                ).toShelf() 
-            }
-        
-        if (albums.isEmpty()) return Feed(listOf()).toFeed()
-        
-        return Feed(
-            shelves = listOf(
-                Shelf.Lists.Items(
-                    id = "gdrive_albums",
-                    title = "Pasted Drive Albums",
-                    list = albums.map { it.list.first() } 
-                )
-            )
-        ).toFeed() // CORRECTED: Using .toFeed() from Extensions
-    }
-
-
-    // --- 4. AlbumClient Implementation ---
-
-    override suspend fun loadAlbum(album: Album): Album {
-        return album
-    }
-
-    // Stub implementation to fulfill the interface contract
-    override suspend fun loadFeed(album: Album): Feed<Shelf>? = null 
-
-    override suspend fun loadTracks(album: Album) = paged { // CORRECTED: Removed unused 'offset' parameter
-        val tracksInAlbum = metadataCache.values
-            .filter { it.album == album.title }
-            .map { metadata ->
-                Track(
-                    id = metadata.originalUrl, 
-                    title = metadata.title,
-                    artists = listOf(Artist(metadata.artist, metadata.artist, null, null)), 
-                    album = Album(
-                        id = metadata.album.hashCode().toString(),
-                        title = metadata.album,
-                        artist = metadata.artist,
-                        type = Album.Type.Album,
-                        cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) },
-                        trackCount = 0L 
-                    ), 
-                    cover = metadata.coverArtUrl?.let { ImageHolder.NetworkRequestImageHolder(it.toGetRequest()) },
-                    streamable = Streamable(
-                        id = metadata.fileId!!, 
-                        type = Streamable.MediaType.Server,
-                        extras = mapOf("file_id" to metadata.fileId!!) 
-                    )
-                )
-            }
-
-        tracksInAlbum to null 
-    }.toFeed()
-
-
-    // --- 5. Metadata Extraction Logic ---
-
-    data class FileMetadata(
-        var title: String,
-        var artist: String,
-        var album: String,
-        var coverArtUrl: String?,
-        var fileId: String? = null,
-        var originalUrl: String = ""
-    )
-    
-    private data class MetadataExtractionResult(val metadata: FileMetadata, val success: Boolean)
-
-    companion object {
-        private const val FILE_HEADER_SIZE = 500 * 1024 
-    }
-    
-    private suspend fun extractMetadata(streamUrl: String, fileId: String, originalUrl: String): MetadataExtractionResult {
-        val rangeHeader = "bytes=0-${FILE_HEADER_SIZE - 1}"
-        val request = Request.Builder()
-            .url(streamUrl)
-            .header("Range", rangeHeader)
-            .build()
-
-        val tempFile = File.createTempFile("gd_metadata_", ".tmp")
-        
+    /**
+     * Parses the JSON string from settings into a list of [DriveTrackInfo] objects.
+     */
+    private fun getTracksFromSettings(): List<DriveTrackInfo> {
         return try {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful || response.body == null) {
-                    throw Exception("Failed to download file header.")
-                }
-                
-                response.body!!.byteStream().use { inputStream ->
-                    tempFile.outputStream().use { output ->
-                        inputStream.copyTo(output, FILE_HEADER_SIZE.toLong())
-                    }
-                }
-                
-                val audioFile = AudioFileIO.read(tempFile)
-                val tag = audioFile.tag
-                
-                val title = tag.firstTitle.takeIf { !it.isNullOrBlank() } ?: extractTitlePlaceholder(originalUrl)
-                val artist = tag.firstArtist.takeIf { !it.isNullOrBlank() } ?: "Unknown Artist"
-                val album = tag.firstAlbum.takeIf { !it.isNullOrBlank() } ?: "Pasted Links"
-                
-                val coverArtUrl = tag.firstArtwork?.let { artwork ->
-                    "data:${artwork.mimeType};base64," + java.util.Base64.getEncoder().encodeToString(artwork.binaryData)
-                }
-
-                val metadata = FileMetadata(
-                    title = title,
-                    artist = artist,
-                    album = album,
-                    coverArtUrl = coverArtUrl,
-                    fileId = fileId,
-                    originalUrl = originalUrl
-                )
-                
-                MetadataExtractionResult(metadata, true)
-            }
+            json.decodeFromString<List<DriveTrackInfo>>(tracksJson)
         } catch (e: Exception) {
-            println("Metadata extraction failed for $fileId: ${e.message}")
-            MetadataExtractionResult(
-                FileMetadata(
-                    title = "Error: ${extractTitlePlaceholder(originalUrl)}",
-                    artist = "Unknown Artist",
-                    album = "Error Reading",
-                    coverArtUrl = null,
-                    fileId = fileId,
-                    originalUrl = originalUrl
-                ), false
+            // If JSON is malformed, return an empty list and log the error
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    /**
+     * Helper function to convert our [DriveTrackInfo] data class
+     * into an [Track] model that Echo understands.
+     */
+    private fun DriveTrackInfo.toTrack(): Track {
+        return Track(
+            id = "gdrive:$id", // Prefix the ID to avoid collisions
+            title = this.title,
+            cover = this.artUrl?.toImageHolder(),
+            artists = listOf(Artist(id = "artist:${this.artist}", name = this.artist)),
+            album = Album(
+                id = "album:${this.album}",
+                title = this.album,
+                artists = this.artist,
+                cover = this.artUrl?.toImageHolder()
             )
-        } finally {
-            tempFile.delete()
+        )
+    }
+
+    /**
+     * Loads the main feed for this extension.
+     * It will display a single shelf containing all the tracks
+     * from the user's JSON setting.
+     */
+    override suspend fun loadHomeFeed(): Feed<Shelf> {
+        val tracks = getTracksFromSettings().map { it.toTrack() }
+
+        val shelves = if (tracks.isEmpty()) {
+            listOf(
+                Shelf.Message(
+                    id = "no_tracks",
+                    title = "No Tracks Found",
+                    subtitle = "Please add your tracks in the extension settings."
+                )
+            )
+        } else {
+            listOf(
+                Shelf.Lists.Tracks(
+                    id = "my_gdrive_tracks",
+                    title = "My Google Drive Tracks",
+                    list = tracks
+                )
+            )
+        }
+
+        // Return a Feed with no tabs, just the main content.
+        return Feed(tabs = emptyList()) {
+            PagedData.Single { shelves }.toFeedData()
         }
     }
-    
-    // Helper extension function for safe copy with limit
-    private fun java.io.InputStream.copyTo(out: java.io.OutputStream, limit: Long) {
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        var bytesRead = 0L
-        var read: Int = 0 // CORRECTED: Initialized 'read'
-        while (bytesRead < limit && read(buffer).also { read = it } >= 0) {
-            val bytesToWrite = minOf(read.toLong(), limit - bytesRead).toInt()
-            out.write(buffer, 0, bytesToWrite)
-            bytesRead += bytesToWrite
+
+    /**
+     * Called when the app needs to load streamable information for a track.
+     * We attach the [Streamable] object here.
+     */
+    override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
+        // Get the Google Drive File ID from our custom track ID
+        val fileId = track.id.removePrefix("gdrive:")
+
+        // Construct the direct download URL for Google Drive
+        val directDownloadUrl = "https://drive.google.com/uc?export=download&id=$fileId"
+
+        // Create a Streamable object. The 'id' here is the URL we will stream from.
+        val streamable = Streamable.Server(
+            id = directDownloadUrl,
+            mediaType = Streamable.MediaType.Server,
+            extras = emptyMap() // No extras needed for this simple stream
+        )
+
+        // Return the track with the streamable information attached
+        return track.copy(
+            streamables = listOf(streamable)
+        )
+    }
+
+    /**
+     * Called when the app is ready to play the [Streamable].
+     * This function provides the actual media stream.
+     */
+    override suspend fun loadStreamableMedia(
+        streamable: Streamable,
+        isDownload: Boolean
+    ): Streamable.Media {
+
+        if (streamable.type != Streamable.MediaType.Server) {
+            throw ClientException.NotSupported("Unsupported streamable type")
         }
-    }
 
+        // The streamable.id contains the directDownloadUrl we created in loadTrack
+        val url = streamable.id
 
-    // --- 6. Unchanged Helper Functions ---
-
-    private fun extractFileId(url: String): String? {
-        val uri = runCatching { URL(url).toURI() }.getOrNull() ?: return null
-        val pathSegments = uri.path.split('/')
-        if (pathSegments.size >= 3 && pathSegments[1] == "file" && pathSegments[2] == "d") {
-            return pathSegments.getOrNull(3)
-        }
-        val query = uri.query ?: return null
-        val params = query.split('&').associate { it.split('=').let { p -> p[0] to p.getOrNull(1) } }
-        return params["id"]
-    }
-    
-    private fun extractTitlePlaceholder(url: String): String {
-        return "Google Drive File (${url.takeLast(10)})"
-    }
-
-    private fun resolveGoogleDriveStream(fileId: String): String {
-        return "https://drive.google.com/uc?export=download&id=$fileId"
+        // Return a simple HTTP source. Echo will handle the streaming.
+        // No decryption is needed for a public Google Drive link.
+        return Streamable.Source.Http(
+            request = url.toGetRequest(),
+            decryption = null
+        ).toMedia()
     }
 }
