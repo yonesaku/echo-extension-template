@@ -1,278 +1,96 @@
 package dev.brahmkshatriya.echo.extension
 
-import dev.brahmkshatriya.echo.common.clients.AlbumClient
 import dev.brahmkshatriya.echo.common.clients.ExtensionClient
-import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
-import dev.brahmkshatriya.echo.common.clients.TrackClient
+import dev.brahmkshatriya.echo.common.clients.MusicClient
 import dev.brahmkshatriya.echo.common.helpers.ContinuationCallback.Companion.await
-import dev.brahmkshatriya.echo.common.models.*
+import dev.brahmkshatriya.echo.common.models.Album
+import dev.brahmkshatriya.echo.common.models.Track
+import dev.brahmkshatriya.echo.common.models.Streamable
 import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.Settings
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.jaudiotagger.audio.AudioFileIO
-import org.jaudiotagger.tag.FieldKey
-import java.io.File
-import java.io.FileOutputStream
-import java.util.Base64
+import org.json.JSONArray
+import org.json.JSONObject
 
-class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
+class GoogleDriveExtension : ExtensionClient, MusicClient {
 
-    private val httpClient = OkHttpClient()
-    private lateinit var settings: Settings
-    private var musicLinks = mutableListOf<String>()
-    private val metadataCache = mutableMapOf<String, TrackMetadata>()
-    private val albumsCache = mutableMapOf<String, AlbumData>()
+    private lateinit var setting: Settings
+    override fun setSettings(settings: Settings) {
+        setting = settings
+    }
 
-    data class TrackMetadata(
-        val title: String,
-        val artist: String,
-        val album: String?,
-        val year: String?,
-        val genre: String?,
-        val albumArt: String?,
-        val duration: Long?
-    )
-
-    data class AlbumData(
-        val name: String,
-        val artist: String,
-        val year: String?,
-        val genre: String?,
-        val artwork: String?,
-        val trackIds: MutableList<String>
-    )
-
-    // ExtensionClient methods
     override suspend fun getSettingItems(): List<Setting> {
         return listOf(
-            Setting.TextInput(
-                title = "Google Drive Links",
-                key = "drive_links",
-                summary = "Paste your Google Drive share links (one per line)",
-                value = ""
-            ),
-            Setting.Switch(
-                title = "Read Metadata",
-                key = "read_metadata",
-                summary = "Read song info from MP3 files",
-                value = true
-            )
+            Setting.Text("metadataURL", "Metadata JSON URL", ""),
+            Setting.TextArea("driveLinks", "Google Drive Links (one per line)", "")
         )
     }
 
-    override fun setSettings(settings: Settings) {
-        this.settings = settings
-    }
+    private val httpClient = OkHttpClient()
+    private var albums: List<Album> = emptyList()
+    private var tracks: List<Track> = emptyList()
+    private var trackMap: Map<String, String> = emptyMap()
 
     override suspend fun onInitialize() {
-        val linksText = settings.getString("drive_links") ?: ""
-        musicLinks = linksText.lines()
-            .filter { it.isNotBlank() }
-            .toMutableList()
-    }
+        val metadataURL = setting.get("metadataURL") ?: return
+        val driveLinksRaw = setting.get("driveLinks") ?: ""
 
-    // HomeFeedClient - exact signature from docs
-    override suspend fun loadHomeFeed(): Feed<Shelf> {
-        val readMetadata = settings.getBoolean("read_metadata") ?: true
+        val request = Request.Builder().url(metadataURL).build()
+        val response = httpClient.newCall(request).await()
+        val json = response.body?.string() ?: return
 
-        if (readMetadata && metadataCache.isEmpty()) {
-            musicLinks.forEach { link ->
-                val fileId = extractFileId(link)
-                loadMetadataFromDrive(fileId)
-            }
-            organizeIntoAlbums()
-        }
+        val metadata = JSONArray(json)
+        val links = driveLinksRaw.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
 
-        val albums = albumsCache.values.sortedBy { it.name }.map { albumData ->
-            EchoMediaItem.Lists.AlbumItem(
-                Album(
-                    id = albumData.name,
-                    title = albumData.name,
-                    cover = albumData.artwork?.let { ImageHolder.URL(it) },
-                    artists = listOf(
-                        Artist(
-                            id = albumData.artist,
-                            name = albumData.artist
-                        )
-                    ),
-                    subtitle = "${albumData.year ?: ""} • ${albumData.trackIds.size} tracks"
-                )
-            )
-        }
+        val tempAlbums = mutableListOf<Album>()
+        val tempTracks = mutableListOf<Track>()
+        val tempMap = mutableMapOf<String, String>()
 
-        return Feed.Single { 
-            listOf(Shelf.Lists.Items(title = "Albums", list = albums))
-        }
-    }
+        for (i in 0 until metadata.length()) {
+            val albumObj = metadata.getJSONObject(i)
+            val albumId = albumObj.getString("id")
+            val albumName = albumObj.getString("name")
+            val albumArtist = albumObj.getString("artist")
+            val albumCover = albumObj.optString("cover", null)
 
-    // AlbumClient - exact signatures from docs
-    override suspend fun loadAlbum(album: Album): Album {
-        return album
-    }
+            val album = Album(albumId, albumName, albumArtist, albumCover)
+            tempAlbums.add(album)
 
-    override suspend fun loadFeed(album: Album): Feed<Shelf>? {
-        return null
-    }
+            val trackArray = albumObj.getJSONArray("tracks")
+            for (j in 0 until trackArray.length()) {
+                val trackObj = trackArray.getJSONObject(j)
+                val trackId = trackObj.getString("id")
+                val trackName = trackObj.getString("name")
+                val trackArtist = trackObj.getString("artist")
+                val trackDuration = trackObj.optLong("duration", 0L)
 
-    override suspend fun loadTracks(album: Album): Feed<Track>? {
-        val albumData = albumsCache[album.id] ?: return null
-        
-        val tracks = albumData.trackIds.mapIndexed { index, fileId ->
-            createTrackFromMetadata(fileId, index)
-        }
+                val track = Track(trackId, trackName, trackArtist, album, trackDuration)
+                tempTracks.add(track)
 
-        return Feed.Single { tracks }
-    }
-
-    // TrackClient - exact signatures from docs
-    override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
-        val directUrl = getDriveDirectUrl(track.id)
-        
-        // Track must have streamables with at least one server
-        return Track(
-            id = track.id,
-            title = track.title,
-            artists = track.artists,
-            album = track.album,
-            duration = track.duration,
-            cover = track.cover,
-            streamables = listOf(
-                Streamable(
-                    id = track.id,
-                    quality = Streamable.MediaQuality.HIGH,
-                    servers = listOf(
-                        Streamable.Server(
-                            id = "drive",
-                            name = "Google Drive"
-                        )
-                    )
-                )
-            )
-        )
-    }
-
-    override suspend fun loadStreamableMedia(
-        streamable: Streamable,
-        isDownload: Boolean
-    ): Streamable.Media {
-        val directUrl = getDriveDirectUrl(streamable.id)
-        return Streamable.Media.WithStream(directUrl)
-    }
-
-    override suspend fun loadFeed(track: Track): Feed<Shelf>? {
-        return null
-    }
-
-    // Helper methods
-    private fun organizeIntoAlbums() {
-        albumsCache.clear()
-
-        metadataCache.forEach { (fileId, metadata) ->
-            val albumName = metadata.album ?: "Unknown Album"
-            val artistName = metadata.artist
-
-            val albumData = albumsCache.getOrPut(albumName) {
-                AlbumData(
-                    name = albumName,
-                    artist = artistName,
-                    year = metadata.year,
-                    genre = metadata.genre,
-                    artwork = metadata.albumArt,
-                    trackIds = mutableListOf()
-                )
-            }
-            albumData.trackIds.add(fileId)
-        }
-    }
-
-    private suspend fun loadMetadataFromDrive(fileId: String) {
-        try {
-            val directUrl = getDriveDirectUrl(fileId)
-            
-            val request = Request.Builder()
-                .url(directUrl)
-                .header("Range", "bytes=0-524288")
-                .build()
-
-            val response = httpClient.newCall(request).await()
-            
-            if (response.isSuccessful) {
-                val bytes = response.body?.bytes() ?: return
-                
-                val tempFile = File.createTempFile("temp_audio_", ".mp3")
-                FileOutputStream(tempFile).use { it.write(bytes) }
-                
-                val audioFile = AudioFileIO.read(tempFile)
-                val tag = audioFile.tag
-                
-                val title = tag?.getFirst(FieldKey.TITLE) ?: "Unknown Title"
-                val artist = tag?.getFirst(FieldKey.ARTIST) ?: "Unknown Artist"
-                val album = tag?.getFirst(FieldKey.ALBUM)
-                val year = tag?.getFirst(FieldKey.YEAR)
-                val genre = tag?.getFirst(FieldKey.GENRE)
-                val duration = audioFile.audioHeader?.trackLength?.toLong()
-                
-                var albumArtUrl: String? = null
-                val artwork = tag?.firstArtwork
-                if (artwork != null) {
-                    val artBytes = artwork.binaryData
-                    albumArtUrl = "data:image/jpeg;base64," + 
-                        Base64.getEncoder().encodeToString(artBytes)
+                // Match by ID or name (customize as needed)
+                val matchedLink = links.find { it.contains(trackId) || it.contains(trackName) }
+                if (matchedLink != null) {
+                    tempMap[trackId] = matchedLink
                 }
-                
-                metadataCache[fileId] = TrackMetadata(
-                    title = title,
-                    artist = artist,
-                    album = album,
-                    year = year,
-                    genre = genre,
-                    albumArt = albumArtUrl,
-                    duration = duration
-                )
-                
-                tempFile.delete()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
+
+        albums = tempAlbums
+        tracks = tempTracks
+        trackMap = tempMap
     }
 
-    private fun createTrackFromMetadata(fileId: String, index: Int): Track {
-        val metadata = metadataCache[fileId]
-        
-        return Track(
-            id = fileId,
-            title = metadata?.title ?: "Track ${index + 1}",
-            artists = listOf(
-                Artist(
-                    id = metadata?.artist ?: "unknown",
-                    name = metadata?.artist ?: "Unknown Artist"
-                )
-            ),
-            album = metadata?.album?.let { 
-                Album(
-                    id = it,
-                    title = it,
-                    cover = metadata.albumArt?.let { art -> ImageHolder.URL(art) }
-                )
-            },
-            duration = metadata?.duration,
-            cover = metadata?.albumArt?.let { ImageHolder.URL(it) }
-        )
+    override suspend fun getAlbums(): List<Album> {
+        return albums
     }
 
-    private fun extractFileId(link: String): String {
-        var fileId = link.substringAfter("/file/d/").substringBefore("/")
-        
-        if (fileId == link) {
-            fileId = link.substringAfter("id=").substringBefore("&")
-        }
-        
-        return fileId
+    override suspend fun getTracks(album: Album): List<Track> {
+        return tracks.filter { it.album.id == album.id }
     }
 
-    private fun getDriveDirectUrl(fileId: String): String {
-        return "https://drive.google.com/uc?export=download&id=$fileId"
+    override suspend fun getStreamables(track: Track): List<Streamable> {
+        val url = trackMap[track.id] ?: return emptyList()
+        return listOf(Streamable(url))
     }
 }
