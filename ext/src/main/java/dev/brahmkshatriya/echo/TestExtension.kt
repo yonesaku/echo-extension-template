@@ -45,13 +45,13 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
 
     override suspend fun getSettingItems(): List<Setting> {
         return listOf(
-            Setting.TextInput(
+            Setting.textInput(
                 title = "Google Drive Links",
                 key = "drive_links",
                 summary = "Paste your Google Drive share links (one per line)",
                 value = ""
             ),
-            Setting.Switch(
+            Setting.switch(
                 title = "Read Metadata",
                 key = "read_metadata",
                 summary = "Read song info from MP3 files",
