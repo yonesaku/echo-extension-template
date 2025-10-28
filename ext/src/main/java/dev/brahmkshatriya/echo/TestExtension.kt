@@ -12,11 +12,12 @@ import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
 import dev.brahmkshatriya.echo.common.models.ImageHolder.Companion.toImageHolder
 import dev.brahmkshatriya.echo.common.models.NetworkRequest.Companion.toGetRequest
 import dev.brahmkshatriya.echo.common.models.Shelf
+import dev.brahmkshatriya.echo.common.models.Shelf.Info
 import dev.brahmkshatriya.echo.common.models.Streamable
 import dev.brahmkshatriya.echo.common.models.Streamable.Media.Companion.toMedia
 import dev.brahmkshatriya.echo.common.models.Streamable.Source.Companion.toSource
 import dev.brahmkshatriya.echo.common.models.Track
-import dev.brahmkshatriya.echo.common.settings.SettingInput
+import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -52,8 +53,8 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
      * Provides a text area in the extension settings for the user
      * to paste their JSON data.
      */
-    override suspend fun getSettingItems() = listOf(
-        SettingInput(
+    override suspend fun getSettingItems(): List<Setting> = listOf(
+        Setting.Input(
             title = "Tracks JSON",
             key = "tracks_json",
             summary = "A JSON array of tracks with id, title, artist, album, and artUrl.",
@@ -86,15 +87,17 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
      * into an [Track] model that Echo understands.
      */
     private fun DriveTrackInfo.toTrack(): Track {
+        val artistName = this.artist
         return Track(
             id = "gdrive:$id", // Prefix the ID to avoid collisions
             title = this.title,
             cover = this.artUrl?.toImageHolder(),
-            artists = listOf(Artist(id = "artist:${this.artist}", name = this.artist)),
+            artists = listOf(Artist(id = "artist:$artistName", name = artistName)),
             album = Album(
                 id = "album:${this.album}",
                 title = this.album,
-                artists = this.artist,
+                // This was the fix for: Argument type mismatch
+                artists = listOf(Artist(id = "artist:$artistName", name = artistName)),
                 cover = this.artUrl?.toImageHolder()
             )
         )
@@ -108,9 +111,11 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
     override suspend fun loadHomeFeed(): Feed<Shelf> {
         val tracks = getTracksFromSettings().map { it.toTrack() }
 
-        val shelves = if (tracks.isEmpty()) {
+        // This was the fix for: Return type mismatch
+        val shelves: List<Shelf> = if (tracks.isEmpty()) {
             listOf(
-                Shelf.Message(
+                // This was the fix for: Unresolved reference 'Message'
+                Info(
                     id = "no_tracks",
                     title = "No Tracks Found",
                     subtitle = "Please add your tracks in the extension settings."
@@ -143,11 +148,11 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
         // Construct the direct download URL for Google Drive
         val directDownloadUrl = "https://drive.google.com/uc?export=download&id=$fileId"
 
-        // Create a Streamable object. The 'id' here is the URL we will stream from.
-        val streamable = Streamable.Server(
+        // This was the fix for: Unresolved reference 'Server'
+        val streamable = Streamable(
             id = directDownloadUrl,
-            mediaType = Streamable.MediaType.Server,
-            extras = emptyMap() // No extras needed for this simple stream
+            type = Streamable.MediaType.Server, // 'mediaType' was renamed to 'type'
+            extras = emptyMap()
         )
 
         // Return the track with the streamable information attached
@@ -178,5 +183,14 @@ open class GoogleDriveExtension : ExtensionClient, HomeFeedClient, TrackClient {
             request = url.toGetRequest(),
             decryption = null
         ).toMedia()
+    }
+
+    /**
+     * This was the fix for: Class 'GoogleDriveExtension' is not abstract
+     * This function is required by TrackClient to load related content.
+     * We have no related content, so we just return null.
+     */
+    override suspend fun loadFeed(track: Track): Feed<Shelf>? {
+        return null
     }
 }
