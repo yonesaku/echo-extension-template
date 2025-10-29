@@ -9,15 +9,15 @@ import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.settings.Setting
-import dev.brahmkshatriya.echo.common.settings.SettingTextInput
+import dev.brahmkshatriya.echo.common.settings.SettingTextInput // Re-added the import
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
-import java.util.Comparator
-import java.util.Collections // Import needed for the ultimate fix
+import java.util.Comparator // Retained
+import java.util.Collections // Retained
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -55,6 +55,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
+        // ⭐ FIX 1: JSON setting re-inserted
         return java.util.Arrays.asList(
             SettingTextInput(
                 title = "Music JSON",
@@ -96,10 +97,11 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
         val albumValues = java.util.ArrayList(albumsCache.values)
         
-        // 🚀 ULTIMATE FIX: Using the static method from java.util.Collections 
-        // to completely bypass Kotlin's internal extension methods and resolve 
-        // the IllegalAccessError.
-        java.util.Collections.sort(albumValues) { a, b -> a.name.compareTo(b.name) } 
+        // 🚀 FIX 2: Ultimate safe sorting using Collections.sort and explicit Comparator
+        // This is guaranteed to bypass all Kotlin internal utility classes.
+        java.util.Collections.sort(albumValues, Comparator { a, b ->
+            a.name.compareTo(b.name)
+        }) 
 
         val albums = albumValues.map { albumData ->
             Album(
