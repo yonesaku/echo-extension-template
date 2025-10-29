@@ -13,8 +13,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.echo.common)
-    implementation("com.squareup.okhttp3:okhttp:4.11.0")
-implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    implementation("com.squareup.okhttp3:okhttp:5.2.1")
+implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 }
 
 java {
