@@ -16,6 +16,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
+import java.util.Comparator // Import required for the fix
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -92,7 +93,11 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             organizeIntoAlbums()
         }
 
-        val albums = albumsCache.values.sortedBy { it.name }.map { albumData ->
+        val albumValues = java.util.ArrayList(albumsCache.values)
+        
+        // FIX APPLIED HERE: Replaced Kotlin extension function 'sortWith' 
+        // with standard Java 'sort(Comparator.comparing(...))' to avoid IllegalAccessError.
+        albumValues.sort(Comparator.comparing { it.name }) 
 
         val albums = albumValues.map { albumData ->
             Album(
@@ -254,21 +259,19 @@ return pagedData.toFeed()
  * DEPENDENCIES in build.gradle.kts:
  * implementation("com.squareup.okhttp3:okhttp:4.11.0")
  * implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
- * 
- * EXAMPLE JSON TO PASTE IN SETTINGS:
- * 
+ * * EXAMPLE JSON TO PASTE IN SETTINGS:
+ * * {
+ * "tracks": [
  * {
- *   "tracks": [
- *     {
- *       "fileId": "1ABC123XYZ",
- *       "title": "Hey Jude",
- *       "artist": "The Beatles",
- *       "album": "Hey Jude",
- *       "albumArt": "https://i.imgur.com/heyjude.jpg",
- *       "year": "1968",
- *       "genre": "Rock",
- *       "duration": 431
- *     }
- *   ]
+ * "fileId": "1ABC123XYZ",
+ * "title": "Hey Jude",
+ * "artist": "The Beatles",
+ * "album": "Hey Jude",
+ * "albumArt": "https://i.imgur.com/heyjude.jpg",
+ * "year": "1968",
+ * "genre": "Rock",
+ * "duration": 431
+ * }
+ * ]
  * }
  */
