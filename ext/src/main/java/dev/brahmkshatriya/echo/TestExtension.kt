@@ -1,3 +1,6 @@
+So I built and compiled now the code is this 
+(I had to modify some parts with another ai since I reached four free plan limit :))
+
 package dev.brahmkshatriya.echo.extension
 
 import dev.brahmkshatriya.echo.common.clients.AlbumClient
@@ -16,8 +19,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
-import java.util.Collections // Required for safe sorting
-import java.util.Comparator // Required for safe sorting
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -55,7 +56,6 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        // ✅ JSON setting is correctly included
         return java.util.Arrays.asList(
             SettingTextInput(
                 title = "Music JSON",
@@ -78,10 +78,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     override suspend fun onInitialize() {
         val jsonText = settings.getString("music_json")
-        
-        // ❌ FIX 1: Replaced Kotlin's 'isNullOrBlank()' with safe Java checks 
-        // (jsonText != null && !jsonText.isEmpty()) to prevent IllegalAccessError.
-        if (jsonText != null && !jsonText.isEmpty()) { 
+        if (!jsonText.isNullOrBlank()) {
             try {
                  val library = json.decodeFromString<MusicLibrary>(jsonText)
                 tracksData.clear()
@@ -99,12 +96,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         }
 
         val albumValues = java.util.ArrayList(albumsCache.values)
-        
-        // ❌ FIX 2: Replaced Kotlin's 'sortWith(compareBy { it.name })' with the 
-        // pure Java utility call 'Collections.sort' to prevent IllegalAccessError.
-        java.util.Collections.sort(albumValues, Comparator { a, b ->
-            a.name.compareTo(b.name)
-        })
+        albumValues.sortWith(compareBy { it.name })
 
         val albums = albumValues.map { albumData ->
             Album(
@@ -134,12 +126,11 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         val pagedData = PagedData.Single<Shelf> { java.util.Collections.singletonList(shelf) }
-        return pagedData.toFeed()
+return pagedData.toFeed()
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
-        // Using java.util.ArrayList for max compatibility, and joinToString is safe.
-        val parts = java.util.ArrayList<String>() 
+        val parts = java.util.ArrayList<String>() // Replaced mutableListOf() with java.util.ArrayList
         albumData.year?.let { parts.add(it) }
         albumData.genre?.let { parts.add(it) }
         parts.add("${albumData.tracks.size} tracks")
@@ -161,7 +152,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             Track(
                 id = trackData.fileId,
                 title = trackData.title,
-                artists = java.util.Collections.singletonList( 
+                artists = java.util.Collections.singletonList( // FIX APPLIED HERE
                     Artist(
                         id = trackData.artist,
                         name = trackData.artist
@@ -223,7 +214,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         return Streamable.Media.Server(
-            sources = java.util.Collections.singletonList( 
+            sources = java.util.Collections.singletonList( // FIX APPLIED HERE
                 Streamable.Source.Http(
                     request = networkRequest,
                     type = Streamable.SourceType.Progressive
@@ -262,3 +253,26 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         return "https://drive.google.com/uc?export=download&id=$fileId"
     }
 }
+
+/*
+ * DEPENDENCIES in build.gradle.kts:
+ * implementation("com.squareup.okhttp3:okhttp:4.11.0")
+ * implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+ * 
+ * EXAMPLE JSON TO PASTE IN SETTINGS:
+ * 
+ * {
+ *   "tracks": [
+ *     {
+ *       "fileId": "1ABC123XYZ",
+ *       "title": "Hey Jude",
+ *       "artist": "The Beatles",
+ *       "album": "Hey Jude",
+ *       "albumArt": "https://i.imgur.com/heyjude.jpg",
+ *       "year": "1968",
+ *       "genre": "Rock",
+ *       "duration": 431
+ *     }
+ *   ]
+ * }
+ */
