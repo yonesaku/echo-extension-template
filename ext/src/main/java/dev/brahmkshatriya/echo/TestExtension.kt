@@ -23,7 +23,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private lateinit var settings: Settings
     private val json = Json { ignoreUnknownKeys = true }
 
-    private var tracksData = mutableListOf<TrackData>()
+    private var tracksData = ArrayList<TrackData>()
     private val albumsCache = mutableMapOf<String, AlbumData>()
 
     @Serializable
@@ -92,7 +92,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             organizeIntoAlbums()
         }
 
-        val albumValues = albumsCache.values.toMutableList()
+        val albumValues = ArrayList(albumsCache.values)
         albumValues.sortBy { it.name }
 
         val albums = albumValues.map { albumData ->
@@ -126,7 +126,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
-        val parts = mutableListOf<String>()
+        val parts = ArrayList<String>()
         albumData.year?.let { parts.add(it) }
         albumData.genre?.let { parts.add(it) }
         parts.add("${albumData.tracks.size} tracks")
@@ -170,7 +170,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                         request = NetworkRequest(url = url, headers = emptyMap()),
                         crop = false
                     )
-                }
+                )
             )
         }
 
@@ -237,7 +237,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                     year = trackData.year,
                     genre = trackData.genre,
                     artwork = trackData.albumArt,
-                    tracks = mutableListOf()
+                    tracks = ArrayList()
                 )
             }
             albumData.tracks.add(trackData)
