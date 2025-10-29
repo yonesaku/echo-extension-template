@@ -77,8 +77,9 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         val jsonText = settings.getString("music_json")
         if (!jsonText.isNullOrBlank()) {
             try {
-                val library = json.decodeFromString<MusicLibrary>(jsonText)
-                tracksData = library.tracks.toMutableList()
+                 val library = json.decodeFromString<MusicLibrary>(jsonText)
+                tracksData.clear()
+                tracksData.addAll(library.tracks)
                 organizeIntoAlbums()
             } catch (e: Exception) {
                 e.printStackTrace()
