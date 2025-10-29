@@ -16,7 +16,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
-import java.util.Comparator // Import required for the fix
+import java.util.Comparator // Retaining import for safety
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -95,9 +95,9 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
         val albumValues = java.util.ArrayList(albumsCache.values)
         
-        // FIX APPLIED HERE: Replaced Kotlin extension function 'sortWith' 
-        // with standard Java 'sort(Comparator.comparing(...))' to avoid IllegalAccessError.
-        albumValues.sort(Comparator.comparing { it.name }) 
+        // ✨ FINAL FIX: Using List.sort with a standard comparison lambda to prevent 
+        // both the IllegalAccessError and the compilation failure.
+        albumValues.sort { a, b -> a.name.compareTo(b.name) } 
 
         val albums = albumValues.map { albumData ->
             Album(
@@ -127,7 +127,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         val pagedData = PagedData.Single<Shelf> { java.util.Collections.singletonList(shelf) }
-return pagedData.toFeed()
+        return pagedData.toFeed()
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
