@@ -9,7 +9,7 @@ import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.settings.Setting
-import dev.brahmkshatriya.echo.common.settings.SettingTextInput // Needed for the JSON setting
+import dev.brahmkshatriya.echo.common.settings.SettingTextInput // Required import
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
@@ -17,8 +17,7 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
 import java.util.Comparator
-import java.util.Collections
-import java.util.Objects // Needed for the safe string check
+import java.util.Collections 
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -56,7 +55,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        // ⭐ FIX 1: JSON setting re-inserted
+        // ✅ VERIFIED FIX: The JSON input field is correctly included here.
         return java.util.Arrays.asList(
             SettingTextInput(
                 title = "Music JSON",
@@ -80,11 +79,8 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     override suspend fun onInitialize() {
         val jsonText = settings.getString("music_json")
         
-        // 🚀 FIX 2: Replaced Kotlin's 'isNullOrBlank()' with a pure Java check 
-        // to resolve the 'IllegalAccessError'.
-        val isBlank = jsonText.isNullOrEmpty() || jsonText.trim().isEmpty() 
-
-        if (!isBlank) {
+        // Fix for 'IllegalAccessError' on isNullOrBlank/trim
+        if (jsonText != null && !jsonText.isEmpty()) { 
             try {
                  val library = json.decodeFromString<MusicLibrary>(jsonText)
                 tracksData.clear()
@@ -103,7 +99,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
         val albumValues = java.util.ArrayList(albumsCache.values)
         
-        // Final working sorting fix (from previous chat)
+        // Fix for 'IllegalAccessError' on sorting
         java.util.Collections.sort(albumValues, Comparator { a, b ->
             a.name.compareTo(b.name)
         }) 
