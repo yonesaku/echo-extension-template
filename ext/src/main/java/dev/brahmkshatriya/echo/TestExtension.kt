@@ -15,7 +15,6 @@ import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
-import java.io.File
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -77,7 +76,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         val jsonText = settings.getString("music_json")
         if (!jsonText.isNullOrBlank()) {
             try {
-                 val library = json.decodeFromString<MusicLibrary>(jsonText)
+                val library = json.decodeFromString<MusicLibrary>(jsonText)
                 tracksData.clear()
                 tracksData.addAll(library.tracks)
                 organizeIntoAlbums()
@@ -100,7 +99,6 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                 id = albumData.name,
                 title = albumData.name,
                 cover = albumData.artwork?.let { url ->
-
                     NetworkRequestImageHolder(
                         request = NetworkRequest(url = url, headers = emptyMap()),
                         crop = false
@@ -123,11 +121,11 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         val pagedData = PagedData.Single<Shelf> { java.util.Collections.singletonList(shelf) }
-return pagedData.toFeed()
+        return pagedData.toFeed()
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
-        val parts = java.util.ArrayList<String>() // Replaced mutableListOf() with java.util.ArrayList
+        val parts = java.util.ArrayList<String>()
         albumData.year?.let { parts.add(it) }
         albumData.genre?.let { parts.add(it) }
         parts.add("${albumData.tracks.size} tracks")
@@ -149,7 +147,7 @@ return pagedData.toFeed()
             Track(
                 id = trackData.fileId,
                 title = trackData.title,
-                artists = java.util.Collections.singletonList( // FIX APPLIED HERE
+                artists = java.util.Collections.singletonList(
                     Artist(
                         id = trackData.artist,
                         name = trackData.artist
@@ -175,7 +173,7 @@ return pagedData.toFeed()
             )
         }
 
-        val pagedData = PagedData.Single { tracks }
+        val pagedData = PagedData.Single<Track> { tracks }
         return pagedData.toFeed()
     }
 
@@ -204,14 +202,13 @@ return pagedData.toFeed()
     ): Streamable.Media {
         val directUrl = getDriveDirectUrl(streamable.id)
 
-        // Create NetworkRequest for the Drive URL
         val networkRequest = NetworkRequest(
             url = directUrl,
             headers = emptyMap()
         )
 
         return Streamable.Media.Server(
-            sources = java.util.Collections.singletonList( // FIX APPLIED HERE
+            sources = java.util.Collections.singletonList(
                 Streamable.Source.Http(
                     request = networkRequest,
                     type = Streamable.SourceType.Progressive
@@ -272,4 +269,13 @@ return pagedData.toFeed()
  *     }
  *   ]
  * }
+ * 
+ * NOTE: Duration should be in SECONDS (not milliseconds)
+ * 
+ * FEATURES:
+ * ✅ JSON-based metadata (no file scanning needed)
+ * ✅ Album art from URLs
+ * ✅ Streams directly from Google Drive
+ * ✅ Organized by albums on home screen
+ * ✅ Full metadata support (title, artist, album, year, genre, duration)
  */
