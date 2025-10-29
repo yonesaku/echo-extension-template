@@ -1,4 +1,3 @@
-
 package dev.brahmkshatriya.echo.extension
 
 import dev.brahmkshatriya.echo.common.clients.AlbumClient
@@ -15,8 +14,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
-import dev.brahmkshatriya.echo.common.models.ResourceUriImageHolder
-import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 
 class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -96,8 +93,11 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             Album(
                 id = albumData.name,
                 title = albumData.name,
-                cover = albumData.artwork?.let { path ->
-                    ResourceUriImageHolder(uri = "file://$path", crop = false)
+                cover = albumData.artwork?.let { url ->
+                    NetworkRequestImageHolder(
+                        request = NetworkRequest(url = url, headers = emptyMap()),
+                        crop = false
+                    )
                 },
                 artists = listOf(
                     Artist(
@@ -115,7 +115,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             list = albums
         )
 
-        val pagedData = PagedData.Single { listOf(shelf) }
+        val pagedData = PagedData.Single<Shelf> { listOf(shelf) }
         return pagedData.toFeed()
     }
 
@@ -151,13 +151,19 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
                 album = Album(
                     id = albumData.name,
                     title = albumData.name,
-                    cover = albumData.artwork?.let { path ->
-                        ResourceUriImageHolder(uri = "file://$path", crop = false)
+                    cover = albumData.artwork?.let { url ->
+                        NetworkRequestImageHolder(
+                            request = NetworkRequest(url = url, headers = emptyMap()),
+                            crop = false
+                        )
                     }
                 ),
                 duration = trackData.duration,
-                cover = trackData.albumArt?.let { path ->
-                    ResourceUriImageHolder(uri = "file://$path", crop = false)
+                cover = trackData.albumArt?.let { url ->
+                    NetworkRequestImageHolder(
+                        request = NetworkRequest(url = url, headers = emptyMap()),
+                        crop = false
+                    )
                 }
             )
         }
@@ -252,7 +258,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
  *       "title": "Hey Jude",
  *       "artist": "The Beatles",
  *       "album": "Hey Jude",
- *       "albumArt": "/storage/emulated/0/Music/heyjude.jpg",
+ *       "albumArt": "https://i.imgur.com/heyjude.jpg",
  *       "year": "1968",
  *       "genre": "Rock",
  *       "duration": 431
