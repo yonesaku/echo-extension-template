@@ -15,7 +15,6 @@ import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
-import java.util.*
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -23,7 +22,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private lateinit var settings: Settings
     private val json = Json { ignoreUnknownKeys = true }
 
-    private var tracksData = ArrayList<TrackData>()
+    private var tracksData = mutableListOf<TrackData>()
     private val albumsCache = mutableMapOf<String, AlbumData>()
 
     @Serializable
@@ -53,7 +52,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        return Arrays.asList(
+        return listOf(
             SettingTextInput(
                 title = "Music JSON",
                 key = "music_json",
@@ -92,7 +91,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             organizeIntoAlbums()
         }
 
-        val albumValues = ArrayList(albumsCache.values)
+        val albumValues = albumsCache.values.toMutableList()
         albumValues.sortBy { it.name }
 
         val albums = albumValues.map { albumData ->
@@ -105,7 +104,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                         crop = false
                     )
                 },
-                artists = Collections.singletonList(
+                artists = listOf(
                     Artist(
                         id = albumData.artist,
                         name = albumData.artist
@@ -121,12 +120,12 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             list = albums
         )
 
-        val pagedData = PagedData.Single<Shelf> { Collections.singletonList(shelf) }
+        val pagedData = PagedData.Single<Shelf> { listOf(shelf) }
         return pagedData.toFeed()
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
-        val parts = ArrayList<String>()
+        val parts = mutableListOf<String>()
         albumData.year?.let { parts.add(it) }
         albumData.genre?.let { parts.add(it) }
         parts.add("${albumData.tracks.size} tracks")
@@ -148,7 +147,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             Track(
                 id = trackData.fileId,
                 title = trackData.title,
-                artists = Collections.singletonList(
+                artists = listOf(
                     Artist(
                         id = trackData.artist,
                         name = trackData.artist
@@ -170,7 +169,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                         request = NetworkRequest(url = url, headers = emptyMap()),
                         crop = false
                     )
-                )
+                }
             )
         }
 
@@ -188,7 +187,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             album = track.album,
             duration = track.duration,
             cover = track.cover,
-            streamables = Collections.singletonList(
+            streamables = listOf(
                 Streamable.server(
                     id = track.id,
                     quality = 320
@@ -209,7 +208,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         return Streamable.Media.Server(
-            sources = Collections.singletonList(
+            sources = listOf(
                 Streamable.Source.Http(
                     request = networkRequest,
                     type = Streamable.SourceType.Progressive
@@ -237,7 +236,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                     year = trackData.year,
                     genre = trackData.genre,
                     artwork = trackData.albumArt,
-                    tracks = ArrayList()
+                    tracks = mutableListOf()
                 )
             }
             albumData.tracks.add(trackData)
