@@ -95,9 +95,9 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
         val albumValues = java.util.ArrayList(albumsCache.values)
         
-        // ✨ FINAL FIX: Using List.sort with a standard comparison lambda to prevent 
-        // both the IllegalAccessError and the compilation failure.
-        albumValues.sort { a, b -> a.name.compareTo(b.name) } 
+        // ✨ FINAL FIX: Using the non-deprecated 'sortWith' function with an explicit 
+        // Java Comparator wrapper to satisfy both compiler and runtime environment.
+        albumValues.sortWith(Comparator { a, b -> a.name.compareTo(b.name) }) 
 
         val albums = albumValues.map { albumData ->
             Album(
