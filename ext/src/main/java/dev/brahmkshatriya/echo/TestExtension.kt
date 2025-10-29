@@ -91,14 +91,15 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             organizeIntoAlbums()
         }
 
-        val albums = albumsCache.values
-    .toMutableList()
-    .apply { sortWith(compareBy { it.name }) }
-    .map { albumData ->
+        val albumValues = java.util.ArrayList(albumsCache.values)
+        albumValues.sortWith(compareBy { it.name })
+
+        val albums = albumValues.map { albumData ->
             Album(
                 id = albumData.name,
                 title = albumData.name,
                 cover = albumData.artwork?.let { url ->
+
                     NetworkRequestImageHolder(
                         request = NetworkRequest(url = url, headers = emptyMap()),
                         crop = false
