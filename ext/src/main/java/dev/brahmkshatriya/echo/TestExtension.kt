@@ -13,6 +13,7 @@ import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import java.io.File
 
 class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -105,9 +106,8 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             )
         }
 
-        // Convert list to PagedData then to Feed
-        val pagedData = PagedData.Single(albums)
-        return Feed(emptyList()) { pagedData.loadFirst() }
+        val pagedData = PagedData.Single { albums }
+        return Feed(emptyList()) { pagedData }
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
@@ -153,8 +153,8 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             )
         }
 
-        val pagedData = PagedData.Single(tracks)
-        return Feed(emptyList()) { pagedData.loadFirst() }
+        val pagedData = PagedData.Single { tracks }
+        return Feed(emptyList()) { pagedData }
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
@@ -181,8 +181,21 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
         isDownload: Boolean
     ): Streamable.Media {
         val directUrl = getDriveDirectUrl(streamable.id)
-        return Streamable.Media.Direct(
-            Streamable.Source.Http(directUrl)
+        
+        // Create NetworkRequest for the Drive URL
+        val networkRequest = NetworkRequest(
+            url = directUrl,
+            headers = emptyMap()
+        )
+        
+        return Streamable.Media.Server(
+            sources = listOf(
+                Streamable.Source.Http(
+                    request = networkRequest,
+                    type = Streamable.SourceType.Progressive
+                )
+            ),
+            merged = false
         )
     }
 
@@ -234,24 +247,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
  *       "year": "1968",
  *       "genre": "Rock",
  *       "duration": 431
- *     },
- *     {
- *       "fileId": "1DEF456UVW",
- *       "title": "Let It Be",
- *       "artist": "The Beatles",
- *       "album": "Let It Be",
- *       "albumArt": "/storage/emulated/0/Music/letitbe.jpg",
- *       "year": "1970",
- *       "genre": "Rock",
- *       "duration": 243
  *     }
  *   ]
  * }
- * 
- * FEATURES:
- * ✅ Simple JSON-based metadata
- * ✅ Album art from local device
- * ✅ Streams from Google Drive
- * ✅ Organized by albums
- * ✅ No metadata extraction needed!
  */
