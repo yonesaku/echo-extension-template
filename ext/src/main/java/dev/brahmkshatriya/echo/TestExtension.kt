@@ -17,7 +17,7 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
 
-class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
+class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
     private val httpClient = OkHttpClient()
     private lateinit var settings: Settings
