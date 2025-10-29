@@ -9,15 +9,15 @@ import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.settings.Setting
-import dev.brahmkshatriya.echo.common.settings.SettingTextInput // Required import
+import dev.brahmkshatriya.echo.common.settings.SettingTextInput
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
-import java.util.Comparator
-import java.util.Collections 
+import java.util.Collections // Required for safe sorting
+import java.util.Comparator // Required for safe sorting
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -55,7 +55,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        // ✅ VERIFIED FIX: The JSON input field is correctly included here.
+        // ✅ JSON setting is correctly included
         return java.util.Arrays.asList(
             SettingTextInput(
                 title = "Music JSON",
@@ -79,7 +79,8 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     override suspend fun onInitialize() {
         val jsonText = settings.getString("music_json")
         
-        // Fix for 'IllegalAccessError' on isNullOrBlank/trim
+        // ❌ FIX 1: Replaced Kotlin's 'isNullOrBlank()' with safe Java checks 
+        // (jsonText != null && !jsonText.isEmpty()) to prevent IllegalAccessError.
         if (jsonText != null && !jsonText.isEmpty()) { 
             try {
                  val library = json.decodeFromString<MusicLibrary>(jsonText)
@@ -99,10 +100,11 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
         val albumValues = java.util.ArrayList(albumsCache.values)
         
-        // Fix for 'IllegalAccessError' on sorting
+        // ❌ FIX 2: Replaced Kotlin's 'sortWith(compareBy { it.name })' with the 
+        // pure Java utility call 'Collections.sort' to prevent IllegalAccessError.
         java.util.Collections.sort(albumValues, Comparator { a, b ->
             a.name.compareTo(b.name)
-        }) 
+        })
 
         val albums = albumValues.map { albumData ->
             Album(
@@ -136,6 +138,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
+        // Using java.util.ArrayList for max compatibility, and joinToString is safe.
         val parts = java.util.ArrayList<String>() 
         albumData.year?.let { parts.add(it) }
         albumData.genre?.let { parts.add(it) }
