@@ -15,6 +15,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
+import dev.brahmkshatriya.echo.common.models.ResourceUriImageHolder
+import dev.brahmkshatriya.echo.common.helpers.toFeed
 
 class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
