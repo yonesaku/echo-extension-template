@@ -15,6 +15,7 @@ import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import java.util.*
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -52,7 +53,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        return listOf(
+        return Arrays.asList(
             SettingTextInput(
                 title = "Music JSON",
                 key = "music_json",
@@ -104,7 +105,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                         crop = false
                     )
                 },
-                artists = listOf(
+                artists = Collections.singletonList(
                     Artist(
                         id = albumData.artist,
                         name = albumData.artist
@@ -120,7 +121,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             list = albums
         )
 
-        val pagedData = PagedData.Single<Shelf> { listOf(shelf) }
+        val pagedData = PagedData.Single<Shelf> { Collections.singletonList(shelf) }
         return pagedData.toFeed()
     }
 
@@ -147,7 +148,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             Track(
                 id = trackData.fileId,
                 title = trackData.title,
-                artists = listOf(
+                artists = Collections.singletonList(
                     Artist(
                         id = trackData.artist,
                         name = trackData.artist
@@ -187,7 +188,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             album = track.album,
             duration = track.duration,
             cover = track.cover,
-            streamables = listOf(
+            streamables = Collections.singletonList(
                 Streamable.server(
                     id = track.id,
                     quality = 320
@@ -208,7 +209,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         return Streamable.Media.Server(
-            sources = listOf(
+            sources = Collections.singletonList(
                 Streamable.Source.Http(
                     request = networkRequest,
                     type = Streamable.SourceType.Progressive
