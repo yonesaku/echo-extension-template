@@ -1,3 +1,4 @@
+
 package dev.brahmkshatriya.echo.extension
 
 import dev.brahmkshatriya.echo.common.clients.AlbumClient
@@ -106,8 +107,14 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
             )
         }
 
-        val pagedData = PagedData.Single { albums }
-        return Feed(emptyList()) { pagedData }
+        val shelf = Shelf.Lists.Items(
+            id = "albums",
+            title = "Albums",
+            list = albums
+        )
+
+        val pagedData = PagedData.Single { listOf(shelf) }
+        return pagedData.toFeed()
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
@@ -154,7 +161,7 @@ class TestExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient 
         }
 
         val pagedData = PagedData.Single { tracks }
-        return Feed(emptyList()) { pagedData }
+        return pagedData.toFeed()
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
