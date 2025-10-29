@@ -23,7 +23,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private lateinit var settings: Settings
     private val json = Json { ignoreUnknownKeys = true }
     
-    private var tracksData = mutableListOf<TrackData>()
+    private var tracksData = java.util.ArrayList<TrackData>()
     private val albumsCache = mutableMapOf<String, AlbumData>()
 
     @Serializable
@@ -53,7 +53,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        return listOf(
+        return java.util.Arrays.asList(
             SettingTextInput(
                 title = "Music JSON",
                 key = "music_json",
@@ -105,7 +105,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                         crop = false
                     )
                 },
-                artists = listOf(
+                artists = java.util.Collections.singletonList(
                     Artist(
                         id = albumData.artist,
                         name = albumData.artist
@@ -121,12 +121,12 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             list = albums
         )
 
-        val pagedData = PagedData.Single<Shelf> { listOf(shelf) }
-        return pagedData.toFeed()
+        val pagedData = PagedData.Single<Shelf> { java.util.Collections.singletonList(shelf) }
+return pagedData.toFeed()
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
-        val parts = mutableListOf<String>()
+        val parts = java.util.ArrayList<String>() // Replaced mutableListOf() with java.util.ArrayList
         albumData.year?.let { parts.add(it) }
         albumData.genre?.let { parts.add(it) }
         parts.add("${albumData.tracks.size} tracks")
@@ -148,7 +148,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             Track(
                 id = trackData.fileId,
                 title = trackData.title,
-                artists = listOf(
+                artists = java.util.Collections.singletonList( // FIX APPLIED HERE
                     Artist(
                         id = trackData.artist,
                         name = trackData.artist
@@ -210,7 +210,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
         
         return Streamable.Media.Server(
-            sources = listOf(
+            sources = java.util.Collections.singletonList( // FIX APPLIED HERE
                 Streamable.Source.Http(
                     request = networkRequest,
                     type = Streamable.SourceType.Progressive
