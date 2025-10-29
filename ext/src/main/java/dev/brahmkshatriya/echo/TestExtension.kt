@@ -9,15 +9,16 @@ import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.settings.Setting
-import dev.brahmkshatriya.echo.common.settings.SettingTextInput // Re-added the import
+import dev.brahmkshatriya.echo.common.settings.SettingTextInput // Needed for the JSON setting
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
-import java.util.Comparator // Retained
-import java.util.Collections // Retained
+import java.util.Comparator
+import java.util.Collections
+import java.util.Objects // Needed for the safe string check
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -78,7 +79,12 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     override suspend fun onInitialize() {
         val jsonText = settings.getString("music_json")
-        if (!jsonText.isNullOrBlank()) {
+        
+        // 🚀 FIX 2: Replaced Kotlin's 'isNullOrBlank()' with a pure Java check 
+        // to resolve the 'IllegalAccessError'.
+        val isBlank = jsonText.isNullOrEmpty() || jsonText.trim().isEmpty() 
+
+        if (!isBlank) {
             try {
                  val library = json.decodeFromString<MusicLibrary>(jsonText)
                 tracksData.clear()
@@ -97,8 +103,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
         val albumValues = java.util.ArrayList(albumsCache.values)
         
-        // 🚀 FIX 2: Ultimate safe sorting using Collections.sort and explicit Comparator
-        // This is guaranteed to bypass all Kotlin internal utility classes.
+        // Final working sorting fix (from previous chat)
         java.util.Collections.sort(albumValues, Comparator { a, b ->
             a.name.compareTo(b.name)
         }) 
@@ -135,7 +140,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
-        val parts = java.util.ArrayList<String>() // Replaced mutableListOf() with java.util.ArrayList
+        val parts = java.util.ArrayList<String>() 
         albumData.year?.let { parts.add(it) }
         albumData.genre?.let { parts.add(it) }
         parts.add("${albumData.tracks.size} tracks")
@@ -157,7 +162,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             Track(
                 id = trackData.fileId,
                 title = trackData.title,
-                artists = java.util.Collections.singletonList( // FIX APPLIED HERE
+                artists = java.util.Collections.singletonList( 
                     Artist(
                         id = trackData.artist,
                         name = trackData.artist
@@ -219,7 +224,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         return Streamable.Media.Server(
-            sources = java.util.Collections.singletonList( // FIX APPLIED HERE
+            sources = java.util.Collections.singletonList( 
                 Streamable.Source.Http(
                     request = networkRequest,
                     type = Streamable.SourceType.Progressive
@@ -258,24 +263,3 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         return "https://drive.google.com/uc?export=download&id=$fileId"
     }
 }
-
-/*
- * DEPENDENCIES in build.gradle.kts:
- * implementation("com.squareup.okhttp3:okhttp:4.11.0")
- * implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
- * * EXAMPLE JSON TO PASTE IN SETTINGS:
- * * {
- * "tracks": [
- * {
- * "fileId": "1ABC123XYZ",
- * "title": "Hey Jude",
- * "artist": "The Beatles",
- * "album": "Hey Jude",
- * "albumArt": "https://i.imgur.com/heyjude.jpg",
- * "year": "1968",
- * "genre": "Rock",
- * "duration": 431
- * }
- * ]
- * }
- */
