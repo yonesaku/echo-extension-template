@@ -92,8 +92,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             organizeIntoAlbums()
         }
 
-        val albumValues = java.util.ArrayList(albumsCache.values)
-        albumValues.sortWith(compareBy { it.name })
+        val albums = albumsCache.values.sortedBy { it.name }.map { albumData ->
 
         val albums = albumValues.map { albumData ->
             Album(
