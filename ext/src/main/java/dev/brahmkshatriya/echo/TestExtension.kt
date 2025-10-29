@@ -16,7 +16,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
-import java.util.Comparator // Retaining import for safety
+import java.util.Comparator
+import java.util.Collections // Import needed for the ultimate fix
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -95,9 +96,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
         val albumValues = java.util.ArrayList(albumsCache.values)
         
-        // ✨ FINAL FIX: Using the non-deprecated 'sortWith' function with an explicit 
-        // Java Comparator wrapper to satisfy both compiler and runtime environment.
-        albumValues.sortWith(Comparator { a, b -> a.name.compareTo(b.name) }) 
+        // 🚀 ULTIMATE FIX: Using the static method from java.util.Collections 
+        // to completely bypass Kotlin's internal extension methods and resolve 
+        // the IllegalAccessError.
+        java.util.Collections.sort(albumValues) { a, b -> a.name.compareTo(b.name) } 
 
         val albums = albumValues.map { albumData ->
             Album(
