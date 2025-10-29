@@ -1,6 +1,3 @@
-So I built and compiled now the code is this 
-(I had to modify some parts with another ai since I reached four free plan limit :))
-
 package dev.brahmkshatriya.echo.extension
 
 import dev.brahmkshatriya.echo.common.clients.AlbumClient
