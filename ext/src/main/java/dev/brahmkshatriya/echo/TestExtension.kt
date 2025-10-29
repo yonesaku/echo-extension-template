@@ -91,7 +91,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             organizeIntoAlbums()
         }
 
-        val albums = albumsCache.values.sortedBy { it.name }.map { albumData ->
+        val albums = albumsCache.values
+    .toMutableList()
+    .apply { sortWith(compareBy { it.name }) }
+    .map { albumData ->
             Album(
                 id = albumData.name,
                 title = albumData.name,
