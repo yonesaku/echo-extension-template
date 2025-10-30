@@ -7,7 +7,7 @@ import dev.brahmkshatriya.echo.common.clients.TrackClient
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
-import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
 import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.SettingCategory
 import dev.brahmkshatriya.echo.common.settings.SettingTextInput
@@ -134,13 +134,15 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
         val shelves = java.util.Collections.singletonList(shelf)
         
-        // Use a separate function to avoid lambda issues
-        return createShelfFeed(shelves)
+        return Feed(emptyList()) { 
+            PagedData.Single { shelves }.toFeedData()
+        }
     }
     
     private suspend fun createShelfFeed(shelves: List<Shelf>): Feed<Shelf> {
-        val pagedData = PagedData.Single<Shelf> { shelves }
-        return pagedData.toFeed()
+        return Feed(emptyList()) {
+            PagedData.Single { shelves }.toFeedData()
+        }
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
