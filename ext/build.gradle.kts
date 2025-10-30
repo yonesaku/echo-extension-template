@@ -68,6 +68,14 @@ publishing {
 }
 
 tasks {
+    // --- ADDED THIS BLOCK ---
+    // Disables the standard, non-shaded JAR.
+    // This helps ensure the EAPK build uses the output from shadowJar.
+    named("jar") {
+        enabled = false
+    }
+    // ------------------------
+
     shadowJar {
         archiveBaseName.set(extId)
         archiveVersion.set(verName)
