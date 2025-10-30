@@ -135,7 +135,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         // Cast to Shelf to fix type mismatch
         val shelves: List<Shelf> = java.util.Collections.singletonList(shelf as Shelf)
         
-        return Feed(emptyList()) { 
+        return Feed(java.util.Collections.emptyList()) { 
             PagedData.Single { shelves }.toFeedData()
         }
     }
@@ -206,9 +206,8 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             )
         }
 
-        return Feed(emptyList()) {
-            PagedData.Single { tracks }.toFeedData()
-        }
+        val pagedData = PagedData.Single<Track> { tracks }
+        return pagedData.toFeed()
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
