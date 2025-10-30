@@ -68,23 +68,23 @@ publishing {
 }
 
 tasks {
-    // CRITICAL: Disable the regular 'jar' task so it doesn't conflict with the shadowJar's output filename.
+    // Disables the standard, non-shaded JAR.
     named("jar") {
         enabled = false
     }
 
     shadowJar {
-        // 🚨 NEW CRITICAL FIX: Force the shaded JAR to use the filename the app is looking for.
-        archiveFileName.set("${extId}.jar")
+        // 🚨 CRITICAL FIX: The app module expects the file to be named 'ext.jar'.
+        archiveFileName.set("ext.jar")
 
-        archiveBaseName.set(extId)
-        archiveVersion.set(verName)
+        // Removing archiveBaseName and archiveVersion to prevent custom naming which breaks the app build.
+        // If these properties were intended for the manifest, they remain inside the manifest block.
 
-        // --- FIX FOR IllegalAccessError (Dependency Relocation) ---
+        // --- Dependency Relocation Fixes ---
         relocate("kotlinx.coroutines", "shadow.kotlinx.coroutines")
         relocate("kotlinx.serialization", "shadow.kotlinx.serialization")
         relocate("kotlin", "shadow.kotlin")
-        // -----------------------------------------------------------
+        // ------------------------------------
 
         manifest {
             attributes(
