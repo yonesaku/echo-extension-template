@@ -13,13 +13,13 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.echo.common)
-    
+
     // HTTP Client (Keep)
     implementation("com.squareup.okhttp3:okhttp:5.2.1") 
-    
+
     // FIX 1: Add the explicit Coroutines dependency to prevent IllegalAccessError
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-    
+
     // FIX 2: Use a recent, stable serialization version
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3") 
 }
@@ -71,6 +71,14 @@ tasks {
     shadowJar {
         archiveBaseName.set(extId)
         archiveVersion.set(verName)
+
+        // --- FIX FOR IllegalAccessError ---
+        // This isolates your extension's libraries from the main app's libraries.
+        relocate("kotlinx.coroutines", "shadow.kotlinx.coroutines")
+        relocate("kotlinx.serialization", "shadow.kotlinx.serialization")
+        relocate("kotlin", "shadow.kotlin")
+        // ------------------------------------
+
         manifest {
             attributes(
                 mapOf(
