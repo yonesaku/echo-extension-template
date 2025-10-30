@@ -1,24 +1,31 @@
-Plugins {
+// --- STRUCTURAL FIX 1: Plugins block must be lowercase ---
+plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
 
+// --- STRUCTURAL FIX 2: Dependencies must be wrapped ---
 dependencies {
-    // 🚨 CRITICAL FIX: Tell the app to use the 'shadow' artifact, which is the output of the shadowJar task.
+    // CRITICAL FIX: Tell the app to use the 'shadow' artifact from the :ext project.
     implementation(project(mapOf("path" to ":ext", "configuration" to "shadow")))
     
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
 }
 
+// --- STRUCTURAL FIX 3: Java and Kotlin blocks need to be correctly scoped ---
+// (Note: The Android plugin applies the Java plugin, so these should resolve now)
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+// Ensure the Kotlin extension is applied correctly if needed
+// This block should now resolve because the Kotlin Android plugin is applied.
 kotlin {
     jvmToolchain(17)
 }
+
 
 val extType: String by project
 val extId: String by project
@@ -59,6 +66,7 @@ tasks.named("preBuild") {
     dependsOn("generateProguardRules")
 }
 
+// This block should also resolve now because the Android Application plugin is applied.
 android {
     namespace = "dev.brahmkshatriya.echo.extension"
     compileSdk = 36
