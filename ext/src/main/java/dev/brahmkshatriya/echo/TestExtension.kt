@@ -134,15 +134,15 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     // Cast to Shelf to fix type mismatch
-    val shelves: List<Shelf> = java.util.Collections.singletonList(shelf as Shelf)
+    // NOTE: Check for typo here, should likely be java.util.Collections.singletonList
+    val shelves: List<Shelf> = java.util.Collections.singletonList(shelf as Shelf) 
 
-    // FIX: Create the PagedData and pass it inside a lambda that matches the expected type.
-    val pagedData = PagedData.Single { shelves }
-
-    return Feed(java.util.Collections.emptyList()) { _ ->
-        pagedData.toFeedData()
+    // FIX: Using the suspend lambda that the compiler expects
+    return Feed(java.util.Collections.emptyList()) { _: Tab? -> 
+        PagedData.Single { shelves }.toFeedData()
     }
 }
+
 
 
 
