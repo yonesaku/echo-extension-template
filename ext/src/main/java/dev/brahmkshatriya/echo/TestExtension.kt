@@ -141,7 +141,16 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         if (albumData.year != null) parts.add(albumData.year)
         if (albumData.genre != null) parts.add(albumData.genre)
         parts.add(albumData.tracks.size.toString() + " tracks")
-        return android.text.TextUtils.join(" • ", parts)
+        
+        // Manual join
+        val result = StringBuilder()
+        for (i in 0 until parts.size) {
+            result.append(parts[i])
+            if (i < parts.size - 1) {
+                result.append(" • ")
+            }
+        }
+        return result.toString()
     }
 
     override suspend fun loadAlbum(album: Album): Album {
