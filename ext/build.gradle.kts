@@ -9,19 +9,13 @@ plugins {
 dependencies {
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
-
+    
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.echo.common)
-
-    // HTTP Client (Keep)
-    implementation("com.squareup.okhttp3:okhttp:5.2.1") 
-
-    // FIX 1: Add the explicit Coroutines dependency to prevent IllegalAccessError
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-
-    // FIX 2: Use a recent, stable serialization version
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3") 
 }
 
 
