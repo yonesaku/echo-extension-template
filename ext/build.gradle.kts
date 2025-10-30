@@ -13,10 +13,17 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.echo.common)
-    implementation("com.squareup.okhttp3:okhttp:5.2.1")
-implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
-
+    
+    // HTTP Client (Keep)
+    implementation("com.squareup.okhttp3:okhttp:5.2.1") 
+    
+    // FIX 1: Add the explicit Coroutines dependency to prevent IllegalAccessError
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+    
+    // FIX 2: Use a recent, stable serialization version
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3") 
 }
+
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
