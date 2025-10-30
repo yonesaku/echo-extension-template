@@ -99,25 +99,30 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         }
 
         val albumValues = java.util.ArrayList(albumsCache.values)
-        albumValues.sortWith(compareBy { it.name })
+        java.util.Collections.sort(albumValues, Comparator { a, b -> a.name.compareTo(b.name) })
 
-        val albums = albumValues.map { albumData ->
-            Album(
-                id = albumData.name,
-                title = albumData.name,
-                cover = albumData.artwork?.let { url ->
-                    NetworkRequestImageHolder(
-                        request = NetworkRequest(url = url, headers = emptyMap()),
-                        crop = false
-                    )
-                },
-                artists = java.util.Collections.singletonList(
-                    Artist(
-                        id = albumData.artist,
-                        name = albumData.artist
-                    )
-                ),
-                subtitle = buildAlbumSubtitle(albumData)
+        val albums = java.util.ArrayList<Album>()
+        for (albumData in albumValues) {
+            val cover = if (albumData.artwork != null) {
+                NetworkRequestImageHolder(
+                    request = NetworkRequest(url = albumData.artwork, headers = emptyMap()),
+                    crop = false
+                )
+            } else null
+            
+            albums.add(
+                Album(
+                    id = albumData.name,
+                    title = albumData.name,
+                    cover = cover,
+                    artists = java.util.Collections.singletonList(
+                        Artist(
+                            id = albumData.artist,
+                            name = albumData.artist
+                        )
+                    ),
+                    subtitle = buildAlbumSubtitle(albumData)
+                )
             )
         }
 
@@ -133,10 +138,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
         val parts = java.util.ArrayList<String>()
-        albumData.year?.let { parts.add(it) }
-        albumData.genre?.let { parts.add(it) }
-        parts.add("${albumData.tracks.size} tracks")
-        return parts.joinToString(" • ")
+        if (albumData.year != null) parts.add(albumData.year)
+        if (albumData.genre != null) parts.add(albumData.genre)
+        parts.add(albumData.tracks.size.toString() + " tracks")
+        return android.text.TextUtils.join(" • ", parts)
     }
 
     override suspend fun loadAlbum(album: Album): Album {
@@ -148,35 +153,43 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     override suspend fun loadTracks(album: Album): Feed<Track>? {
-        val albumData = albumsCache[album.id] ?: return null
+        val albumData = albumsCache[album.id]
+        if (albumData == null) return null
 
-        val tracks = albumData.tracks.map { trackData ->
-            Track(
-                id = trackData.fileId,
-                title = trackData.title,
-                artists = java.util.Collections.singletonList(
-                    Artist(
-                        id = trackData.artist,
-                        name = trackData.artist
-                    )
-                ),
-                album = Album(
-                    id = albumData.name,
-                    title = albumData.name,
-                    cover = albumData.artwork?.let { url ->
-                        NetworkRequestImageHolder(
-                            request = NetworkRequest(url = url, headers = emptyMap()),
-                            crop = false
+        val tracks = java.util.ArrayList<Track>()
+        for (trackData in albumData.tracks) {
+            val albumCover = if (albumData.artwork != null) {
+                NetworkRequestImageHolder(
+                    request = NetworkRequest(url = albumData.artwork, headers = emptyMap()),
+                    crop = false
+                )
+            } else null
+            
+            val trackCover = if (trackData.albumArt != null) {
+                NetworkRequestImageHolder(
+                    request = NetworkRequest(url = trackData.albumArt, headers = emptyMap()),
+                    crop = false
+                )
+            } else null
+            
+            tracks.add(
+                Track(
+                    id = trackData.fileId,
+                    title = trackData.title,
+                    artists = java.util.Collections.singletonList(
+                        Artist(
+                            id = trackData.artist,
+                            name = trackData.artist
                         )
-                    }
-                ),
-                duration = trackData.duration,
-                cover = trackData.albumArt?.let { url ->
-                    NetworkRequestImageHolder(
-                        request = NetworkRequest(url = url, headers = emptyMap()),
-                        crop = false
-                    )
-                }
+                    ),
+                    album = Album(
+                        id = albumData.name,
+                        title = albumData.name,
+                        cover = albumCover
+                    ),
+                    duration = trackData.duration,
+                    cover = trackCover
+                )
             )
         }
 
@@ -232,7 +245,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private fun organizeIntoAlbums() {
         albumsCache.clear()
 
-        tracksData.forEach { trackData ->
+        for (trackData in tracksData) {
             val albumName = trackData.album
             val artistName = trackData.artist
 
@@ -243,7 +256,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                     year = trackData.year,
                     genre = trackData.genre,
                     artwork = trackData.albumArt,
-                    tracks = mutableListOf()
+                    tracks = java.util.ArrayList()
                 )
             }
             albumData.tracks.add(trackData)
