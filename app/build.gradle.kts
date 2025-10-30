@@ -1,10 +1,12 @@
-plugins {
+Plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
 
 dependencies {
-    implementation(project(":ext"))
+    // 🚨 CRITICAL FIX: Tell the app to use the 'shadow' artifact, which is the output of the shadowJar task.
+    implementation(project(mapOf("path" to ":ext", "configuration" to "shadow")))
+    
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
 }
