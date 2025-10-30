@@ -9,6 +9,7 @@ plugins {
 dependencies {
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
+compileOnly("dev.brahmkshatriya.echo:common:1.0.0")
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
@@ -23,7 +24,6 @@ dependencies {
     // FIX 2: Use a recent, stable serialization version
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3") 
 }
-implementation("dev.brahmkshatriya.echo:common:1.0.0")
 
 
 java {
