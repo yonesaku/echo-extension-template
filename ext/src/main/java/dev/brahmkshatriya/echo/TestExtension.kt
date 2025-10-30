@@ -132,14 +132,14 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             list = albums
         )
 
-        // Create a simple wrapper class to avoid suspend lambda
         val shelves = java.util.Collections.singletonList(shelf)
-        val pagedData = object : PagedData.Single<Shelf>() {
-            override suspend fun loadList(): List<Shelf> {
-                return shelves
-            }
-        }
         
+        // Use a separate function to avoid lambda issues
+        return createShelfFeed(shelves)
+    }
+    
+    private suspend fun createShelfFeed(shelves: List<Shelf>): Feed<Shelf> {
+        val pagedData = PagedData.Single<Shelf> { shelves }
         return pagedData.toFeed()
     }
 
