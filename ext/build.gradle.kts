@@ -68,17 +68,26 @@ publishing {
 }
 
 tasks {
-    // Disables the standard, non-shaded JAR.
+    // 1. Configure shadowJar task to exclude default runtime dependencies 
+    // before re-adding it to the build chain.
+    named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar").configure {
+        configurations = listOf(project.configurations.runtimeClasspath)
+    }
+
+    // 2. CRITICAL: Add explicit dependency for the 'assemble' task 
+    // to ensure shadowJar runs before the app module tries to find the file.
+    named("assemble") {
+        dependsOn(shadowJar)
+    }
+
+    // 3. Disable the standard JAR task.
     named("jar") {
         enabled = false
     }
 
     shadowJar {
-        // 🚨 CRITICAL FIX: The app module expects the file to be named 'ext.jar'.
+        // CRITICAL FIX: Ensure the output is *exactly* what the app expects: 'ext.jar'.
         archiveFileName.set("ext.jar")
-
-        // Removing archiveBaseName and archiveVersion to prevent custom naming which breaks the app build.
-        // If these properties were intended for the manifest, they remain inside the manifest block.
 
         // --- Dependency Relocation Fixes ---
         relocate("kotlinx.coroutines", "shadow.kotlinx.coroutines")
