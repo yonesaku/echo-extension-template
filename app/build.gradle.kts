@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":ext"))
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
+    implementation(libs.kotlin.stdlib)
 }
 
 java {
