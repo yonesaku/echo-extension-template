@@ -68,24 +68,23 @@ publishing {
 }
 
 tasks {
-    // --- ADDED THIS BLOCK ---
-    // Disables the standard, non-shaded JAR.
-    // This helps ensure the EAPK build uses the output from shadowJar.
+    // CRITICAL: Disable the regular 'jar' task so it doesn't conflict with the shadowJar's output filename.
     named("jar") {
         enabled = false
     }
-    // ------------------------
 
     shadowJar {
+        // 🚨 NEW CRITICAL FIX: Force the shaded JAR to use the filename the app is looking for.
+        archiveFileName.set("${extId}.jar")
+
         archiveBaseName.set(extId)
         archiveVersion.set(verName)
 
-        // --- FIX FOR IllegalAccessError ---
-        // This isolates your extension's libraries from the main app's libraries.
+        // --- FIX FOR IllegalAccessError (Dependency Relocation) ---
         relocate("kotlinx.coroutines", "shadow.kotlinx.coroutines")
         relocate("kotlinx.serialization", "shadow.kotlinx.serialization")
         relocate("kotlin", "shadow.kotlin")
-        // ------------------------------------
+        // -----------------------------------------------------------
 
         manifest {
             attributes(
