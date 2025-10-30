@@ -132,8 +132,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             list = albums
         )
 
-        val pagedData = PagedData.Single<Shelf> { java.util.Collections.singletonList(shelf) }
-        return pagedData.toFeed()
+        // Return Feed directly without PagedData
+        return Feed(emptyList()) { 
+            Feed.Data(java.util.Collections.singletonList(shelf))
+        }
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
@@ -202,8 +204,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             )
         }
 
-        val pagedData = PagedData.Single<Track> { tracks }
-        return pagedData.toFeed()
+        // Return Feed directly
+        return Feed(emptyList()) {
+            Feed.Data(tracks)
+        }
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
