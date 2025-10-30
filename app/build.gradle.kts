@@ -4,9 +4,7 @@ plugins {
 }
 
 dependencies {
-    // CRITICAL FIX: Tell the app to use the 'shadow' artifact from the :ext project.
-    implementation(project(mapOf("path" to ":ext", "configuration" to "shadow")))
-    
+    implementation(project(":ext"))
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
 }
@@ -20,7 +18,6 @@ kotlin {
     jvmToolchain(17)
 }
 
-
 val extType: String by project
 val extId: String by project
 val extClass: String by project
@@ -28,7 +25,6 @@ val extClass: String by project
 val extIconUrl: String? by project
 val extName: String by project
 val extDescription: String? by project
-// ... (rest of val definitions)
 
 val extAuthor: String by project
 val extAuthorUrl: String? by project
@@ -91,7 +87,6 @@ android {
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "okhttp-rules.pro", // <-- NEW LINE ADDED HERE
                 generatedProguard.absolutePath
             )
         }
