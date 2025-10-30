@@ -9,6 +9,7 @@ import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.settings.Setting
+import dev.brahmkshatriya.echo.common.settings.SettingCategory
 import dev.brahmkshatriya.echo.common.settings.SettingTextInput
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
@@ -53,17 +54,23 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     override suspend fun getSettingItems(): List<Setting> {
         return java.util.Arrays.asList(
-            SettingTextInput(
-                title = "Music JSON",
-                key = "music_json",
-                summary = "Paste your music library JSON here",
-                defaultValue = ""
-            ),
-            SettingSwitch(
-                title = "Enabled",
-                key = "enabled",
-                summary = "Enable the extension",
-                defaultValue = true
+            SettingCategory(
+                title = "Configuration",
+                key = "config",
+                items = java.util.Arrays.asList(
+                    SettingTextInput(
+                        title = "Music JSON",
+                        key = "music_json",
+                        summary = "Paste your music library JSON here",
+                        defaultValue = ""
+                    ),
+                    SettingSwitch(
+                        title = "Enabled",
+                        key = "enabled",
+                        summary = "Enable the extension",
+                        defaultValue = true
+                    )
+                )
             )
         )
     }
@@ -74,7 +81,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     override suspend fun onInitialize() {
         val jsonText = settings.getString("music_json")
-        if (!jsonText.isNullOrBlank()) {
+        if (jsonText != null && jsonText.length > 0) {
             try {
                 val library = json.decodeFromString<MusicLibrary>(jsonText)
                 tracksData.clear()
