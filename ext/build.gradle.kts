@@ -91,7 +91,9 @@ tasks {
         relocate("kotlinx.coroutines", "shadow.kotlinx.coroutines")
         relocate("kotlinx.serialization", "shadow.kotlinx.serialization")
         relocate("kotlin", "shadow.kotlin")
-        // ------------------------------------
+        // 🚨 CRITICAL NEW FIX: SHADOW THE COMMON LIBRARY
+        // This isolates your extension from the host app's potentially conflicting version of SettingsProvider.
+        relocate("dev.brahmkshatriya.echo.common", "shadow.dev.brahmkshatriya.echo.common") ------------------------------------
 
         manifest {
             attributes(
