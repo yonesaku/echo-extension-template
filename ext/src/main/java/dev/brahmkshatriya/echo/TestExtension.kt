@@ -95,56 +95,51 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     override suspend fun loadHomeFeed(): Feed<Shelf> {
-    if (albumsCache.isEmpty()) {
-        organizeIntoAlbums()
-    }
+        if (albumsCache.isEmpty()) {
+            organizeIntoAlbums()
+        }
 
-    val albumValues = java.util.ArrayList(albumsCache.values)
-    java.util.Collections.sort(albumValues, Comparator { a, b -> a.name.compareTo(b.name) })
+        val albumValues = java.util.ArrayList(albumsCache.values)
+        java.util.Collections.sort(albumValues, Comparator { a, b -> a.name.compareTo(b.name) })
 
-    val albums = java.util.ArrayList<Album>()
-    for (albumData in albumValues) {
-        val cover = if (albumData.artwork != null) {
-            NetworkRequestImageHolder(
-                request = NetworkRequest(url = albumData.artwork, headers = emptyMap()),
-                crop = false
+        val albums = java.util.ArrayList<Album>()
+        for (albumData in albumValues) {
+            val cover = if (albumData.artwork != null) {
+                NetworkRequestImageHolder(
+                    request = NetworkRequest(url = albumData.artwork, headers = emptyMap()),
+                    crop = false
+                )
+            } else null
+
+            albums.add(
+                Album(
+                    id = albumData.name,
+                    title = albumData.name,
+                    cover = cover,
+                    artists = java.util.Collections.singletonList(
+                        Artist(
+                            id = albumData.artist,
+                            name = albumData.artist
+                        )
+                    ),
+                    subtitle = buildAlbumSubtitle(albumData)
+                )
             )
-        } else null
+        }
 
-        albums.add(
-            Album(
-                id = albumData.name,
-                title = albumData.name,
-                cover = cover,
-                artists = java.util.Collections.singletonList(
-                    Artist(
-                        id = albumData.artist,
-                        name = albumData.artist
-                    )
-                ),
-                subtitle = buildAlbumSubtitle(albumData)
-            )
+        val shelf = Shelf.Lists.Items(
+            id = "albums",
+            title = "Albums",
+            list = albums
         )
+
+        // Cast to Shelf to fix type mismatch
+        val shelves: List<Shelf> = java.util.Collections.singletonList(shelf as Shelf)
+
+        return Feed(java.util.Collections.emptyList()) { 
+            PagedData.Single { shelves }.toFeedData()
+        }
     }
-
-    val shelf = Shelf.Lists.Items(
-        id = "albums",
-        title = "Albums",
-        list = albums
-    )
-
-    // Cast to Shelf to fix type mismatch
-    // NOTE: Check for typo here, should likely be java.util.Collections.singletonList
-    val shelves: List<Shelf> = java.util.Collections.singletonList(shelf as Shelf) 
-
-    // FIX: Using the suspend lambda that the compiler expects
-    return Feed(java.util.Collections.emptyList()) { _: Tab? -> 
-        PagedData.Single { shelves }.toFeedData()
-    }
-}
-
-
-
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
         val parts = java.util.ArrayList<String>()
