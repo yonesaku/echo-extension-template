@@ -8,6 +8,7 @@ import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.SettingCategory
 import dev.brahmkshatriya.echo.common.settings.SettingTextInput
