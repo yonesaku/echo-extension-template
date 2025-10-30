@@ -9,7 +9,6 @@ plugins {
 dependencies {
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
-compileOnly("dev.brahmkshatriya.echo:common:1.0.0")
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
@@ -69,32 +68,9 @@ publishing {
 }
 
 tasks {
-    // Disables the standard, non-shaded JAR.
-    named("jar") {
-        enabled = false
-    }
-    
-    // CRITICAL: Add explicit dependency for the 'assemble' task 
-    // to ensure shadowJar runs before the app module tries to find the file.
-    named("assemble") {
-        dependsOn(shadowJar)
-    }
-
     shadowJar {
-        // CRITICAL FIX: The app module expects the file to be named 'ext.jar'.
-        archiveFileName.set("ext.jar")
-
-        // 🚨 SCRIPT COMPILATION FIX: Use .set() for Gradle property assignment, and .get() for the configuration.
-        configurations.set(listOf(project.configurations.runtimeClasspath.get()))
-
-        // --- Dependency Relocation Fixes ---
-        relocate("kotlinx.coroutines", "shadow.kotlinx.coroutines")
-        relocate("kotlinx.serialization", "shadow.kotlinx.serialization")
-        relocate("kotlin", "shadow.kotlin")
-        // 🚨 CRITICAL NEW FIX: SHADOW THE COMMON LIBRARY
-        // This isolates your extension from the host app's potentially conflicting version of SettingsProvider.
-        relocate("dev.brahmkshatriya.echo.common", "shadow.dev.brahmkshatriya.echo.common") ------------------------------------
-
+        archiveBaseName.set(extId)
+        archiveVersion.set(verName)
         manifest {
             attributes(
                 mapOf(
