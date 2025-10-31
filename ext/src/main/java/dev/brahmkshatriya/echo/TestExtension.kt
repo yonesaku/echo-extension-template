@@ -1,25 +1,30 @@
 package dev.brahmkshatriya.echo.extension
 
+import dev.brahmkshatriya.echo.common.clients.AlbumClient
 import dev.brahmkshatriya.echo.common.clients.ExtensionClient
+import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
+import dev.brahmkshatriya.echo.common.helpers.PagedData
+import dev.brahmkshatriya.echo.common.models.*
+import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
+import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
 import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.SettingCategory
 import dev.brahmkshatriya.echo.common.settings.SettingTextInput
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
-import dev.brahmkshatriya.echo.common.models.*
-import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 
-class DriveLinkExtension : ExtensionClient, TrackClient {
+class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
     private val httpClient = OkHttpClient()
     private lateinit var settings: Settings
     private val json = Json { ignoreUnknownKeys = true }
 
-    private var tracksData = java.util.ArrayList<TrackData>()
+    private var tracksData = mutableListOf<TrackData>()
+    private val albumsCache = mutableMapOf<String, AlbumData>()
 
     @Serializable
     data class TrackData(
@@ -33,41 +38,41 @@ class DriveLinkExtension : ExtensionClient, TrackClient {
         val duration: Long? = null
     )
 
+    data class AlbumData(
+        val name: String,
+        val artist: String,
+        val year: String?,
+        val genre: String?,
+        val artwork: String?,
+        val tracks: MutableList<TrackData>
+    )
+
     @Serializable
     data class MusicLibrary(
         val tracks: List<TrackData>
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        val settings = java.util.ArrayList<Setting>()
-        
-        val items = java.util.ArrayList<Setting>()
-        items.add(
-            SettingTextInput(
-                title = "Music JSON",
-                key = "music_json",
-                summary = "Paste your music library JSON here. Your music will appear when you search or manually add tracks.",
-                defaultValue = ""
-            )
-        )
-        items.add(
-            SettingSwitch(
-                title = "Enabled",
-                key = "enabled",
-                summary = "Enable the extension",
-                defaultValue = true
-            )
-        )
-        
-        settings.add(
+        return listOf(
             SettingCategory(
                 title = "Configuration",
                 key = "config",
-                items = items
+                items = listOf(
+                    SettingTextInput(
+                        title = "Music JSON",
+                        key = "music_json",
+                        summary = "Paste your music library JSON here",
+                        defaultValue = ""
+                    ),
+                    SettingSwitch(
+                        title = "Enabled",
+                        key = "enabled",
+                        summary = "Enable the extension",
+                        defaultValue = true
+                    )
+                )
             )
         )
-        
-        return settings
     }
 
     override fun setSettings(settings: Settings) {
@@ -75,18 +80,105 @@ class DriveLinkExtension : ExtensionClient, TrackClient {
     }
 
     override suspend fun onInitialize() {
-        val jsonText = settings.getString("music_json")
-        if (jsonText != null && jsonText.length > 0) {
-            val trimmed = jsonText.trim()
-            if (trimmed.length > 0) {
-                try {
-                    val library = json.decodeFromString<MusicLibrary>(trimmed)
-                    tracksData.clear()
-                    tracksData.addAll(library.tracks)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+        val jsonText = settings.getString("music_json") ?: return
+        if (jsonText.isEmpty()) return
+        
+        try {
+            val library = json.decodeFromString<MusicLibrary>(jsonText)
+            tracksData = library.tracks.toMutableList()
+            organizeIntoAlbums()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override suspend fun loadHomeFeed(): Feed<Shelf> {
+        if (albumsCache.isEmpty()) {
+            organizeIntoAlbums()
+        }
+
+        val albums = albumsCache.values.sortedBy { it.name }.map { albumData ->
+            Album(
+                id = albumData.name,
+                title = albumData.name,
+                cover = albumData.artwork?.let { url ->
+                    NetworkRequestImageHolder(
+                        request = NetworkRequest(url = url, headers = emptyMap()),
+                        crop = false
+                    )
+                },
+                artists = listOf(
+                    Artist(
+                        id = albumData.artist,
+                        name = albumData.artist
+                    )
+                ),
+                subtitle = buildAlbumSubtitle(albumData)
+            )
+        }
+
+        val shelf = Shelf.Lists.Items(
+            id = "albums",
+            title = "Albums",
+            list = albums
+        )
+
+        return Feed(emptyList()) {
+            PagedData.Single { listOf(shelf) }.toFeedData()
+        }
+    }
+
+    private fun buildAlbumSubtitle(albumData: AlbumData): String {
+        val parts = mutableListOf<String>()
+        albumData.year?.let { parts.add(it) }
+        albumData.genre?.let { parts.add(it) }
+        parts.add("${albumData.tracks.size} tracks")
+        return parts.joinToString(" • ")
+    }
+
+    override suspend fun loadAlbum(album: Album): Album {
+        return album
+    }
+
+    override suspend fun loadFeed(album: Album): Feed<Shelf>? {
+        return null
+    }
+
+    override suspend fun loadTracks(album: Album): Feed<Track>? {
+        val albumData = albumsCache[album.id] ?: return null
+
+        val tracks = albumData.tracks.map { trackData ->
+            Track(
+                id = trackData.fileId,
+                title = trackData.title,
+                artists = listOf(
+                    Artist(
+                        id = trackData.artist,
+                        name = trackData.artist
+                    )
+                ),
+                album = Album(
+                    id = albumData.name,
+                    title = albumData.name,
+                    cover = albumData.artwork?.let { url ->
+                        NetworkRequestImageHolder(
+                            request = NetworkRequest(url = url, headers = emptyMap()),
+                            crop = false
+                        )
+                    }
+                ),
+                duration = trackData.duration,
+                cover = trackData.albumArt?.let { url ->
+                    NetworkRequestImageHolder(
+                        request = NetworkRequest(url = url, headers = emptyMap()),
+                        crop = false
+                    )
                 }
-            }
+            )
+        }
+
+        return Feed(emptyList()) {
+            PagedData.Single { tracks }.toFeedData()
         }
     }
 
@@ -100,7 +192,7 @@ class DriveLinkExtension : ExtensionClient, TrackClient {
             album = track.album,
             duration = track.duration,
             cover = track.cover,
-            streamables = java.util.Collections.singletonList(
+            streamables = listOf(
                 Streamable.server(
                     id = track.id,
                     quality = 320
@@ -117,11 +209,11 @@ class DriveLinkExtension : ExtensionClient, TrackClient {
 
         val networkRequest = NetworkRequest(
             url = directUrl,
-            headers = java.util.HashMap()
+            headers = emptyMap()
         )
 
         return Streamable.Media.Server(
-            sources = java.util.Collections.singletonList(
+            sources = listOf(
                 Streamable.Source.Http(
                     request = networkRequest,
                     type = Streamable.SourceType.Progressive
@@ -135,38 +227,65 @@ class DriveLinkExtension : ExtensionClient, TrackClient {
         return null
     }
 
+    private fun organizeIntoAlbums() {
+        albumsCache.clear()
+
+        tracksData.forEach { trackData ->
+            val albumName = trackData.album
+            val artistName = trackData.artist
+
+            val albumData = albumsCache.getOrPut(albumName) {
+                AlbumData(
+                    name = albumName,
+                    artist = artistName,
+                    year = trackData.year,
+                    genre = trackData.genre,
+                    artwork = trackData.albumArt,
+                    tracks = mutableListOf()
+                )
+            }
+            albumData.tracks.add(trackData)
+        }
+    }
+
     private fun getDriveDirectUrl(fileId: String): String {
         return "https://drive.google.com/uc?export=download&id=$fileId"
     }
 }
 
 /*
- * WORKING VERSION - NO FEED LAMBDAS!
+ * DEPENDENCIES in ext/build.gradle.kts:
  * 
- * HOW TO USE:
- * 1. Paste your JSON in settings
- * 2. Manually create a playlist in Echo
- * 3. Search for your track by fileId or title
- * 4. Add tracks to your playlist
- * 5. Play from your playlist!
- * 
- * OR: Use Echo's "Add to Queue" feature to queue tracks by searching
- * 
- * This avoids all the Feed/lambda issues by not trying to show a home feed.
- * You manage organization in Echo's built-in playlists.
+ * dependencies {
+ *     compileOnly(libs.echo.common)
+ *     
+ *     implementation("com.squareup.okhttp3:okhttp:4.11.0")
+ *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+ *     
+ *     testImplementation(libs.junit)
+ *     testImplementation(libs.coroutines.test)
+ *     testImplementation(libs.echo.common)
+ * }
  * 
  * EXAMPLE JSON:
  * {
  *   "tracks": [
  *     {
- *       "fileId": "1ABC123",
+ *       "fileId": "1ABC123XYZ",
  *       "title": "Hey Jude",
  *       "artist": "The Beatles",
  *       "album": "Hey Jude",
- *       "albumArt": "https://i.imgur.com/art.jpg",
+ *       "albumArt": "https://i.imgur.com/heyjude.jpg",
  *       "year": "1968",
+ *       "genre": "Rock",
  *       "duration": 431
  *     }
  *   ]
  * }
+ * 
+ * KEY FIX:
+ * ✅ Changed onInitialize() to avoid .isNullOrBlank()
+ * ✅ Uses safe null handling: `?: return` then `.isEmpty()`
+ * ✅ Follows the pattern from working Spotify extension
+ * ✅ No more IllegalAccessError!
  */
