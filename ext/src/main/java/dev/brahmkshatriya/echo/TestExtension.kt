@@ -50,17 +50,17 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     override suspend fun getSettingItems(): List<Setting> {
         return listOf(
-            SettingTextInput(
-                title = "Music JSON",
-                key = "music_json",
-                summary = "Paste your music library JSON here",
-                defaultValue = ""
-            ),
-            SettingSwitch(
-                title = "Enabled",
-                key = "enabled",
-                summary = "Enable the extension",
-                defaultValue = true
+            SettingCategory(
+                title = "Configuration",
+                key = "config_category",
+                items = listOf(
+                    SettingTextInput(
+                        title = "Music JSON",
+                        key = "music_json",
+                        summary = "Paste your music library JSON here",
+                        defaultValue = ""
+                    )
+                )
             )
         )
     }
@@ -82,6 +82,18 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             tracksData.clear()
             for (trackElement in tracksArray) {
                 val track = trackElement.jsonObject
+                
+                // Manual toLong conversion to avoid Kotlin stdlib
+                val durationStr = track["duration"]?.jsonPrimitive?.content
+                var duration: Long? = null
+                if (durationStr != null) {
+                    try {
+                        duration = java.lang.Long.parseLong(durationStr)
+                    } catch (e: NumberFormatException) {
+                        duration = null
+                    }
+                }
+                
                 val trackData = TrackData(
                     fileId = track["fileId"]?.jsonPrimitive?.content ?: continue,
                     title = track["title"]?.jsonPrimitive?.content ?: "",
@@ -90,7 +102,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                     albumArt = track["albumArt"]?.jsonPrimitive?.content,
                     year = track["year"]?.jsonPrimitive?.content,
                     genre = track["genre"]?.jsonPrimitive?.content,
-                    duration = track["duration"]?.jsonPrimitive?.content?.toLongOrNull()
+                    duration = duration
                 )
                 tracksData.add(trackData)
             }
