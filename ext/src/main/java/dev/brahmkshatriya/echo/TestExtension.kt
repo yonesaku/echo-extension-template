@@ -119,14 +119,14 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             )
         }
 
-        val shelf = Shelf.Lists.Items(
+        val shelf: Shelf = Shelf.Lists.Items(
             id = "albums",
             title = "Albums",
             list = albums
         )
 
         return Feed(emptyList()) {
-            PagedData.Single { listOf(shelf) }.toFeedData()
+            PagedData.Single { listOf<Shelf>(shelf) }.toFeedData()
         }
     }
 
