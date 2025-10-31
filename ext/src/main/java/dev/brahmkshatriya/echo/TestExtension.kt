@@ -49,20 +49,27 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        return listOf(
+        val settings = ArrayList<Setting>()
+        val categoryItems = ArrayList<Setting>()
+        
+        categoryItems.add(
+            SettingTextInput(
+                title = "Music JSON",
+                key = "music_json",
+                summary = "Paste your music library JSON here",
+                defaultValue = ""
+            )
+        )
+        
+        settings.add(
             SettingCategory(
                 title = "Configuration",
                 key = "config_category",
-                items = listOf(
-                    SettingTextInput(
-                        title = "Music JSON",
-                        key = "music_json",
-                        summary = "Paste your music library JSON here",
-                        defaultValue = ""
-                    )
-                )
+                items = categoryItems
             )
         )
+        
+        return settings
     }
 
     override fun setSettings(settings: Settings) {
