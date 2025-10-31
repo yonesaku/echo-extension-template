@@ -81,14 +81,16 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     override suspend fun onInitialize() {
         val jsonText = settings.getString("music_json")
-        if (!jsonText.isNullOrBlank()) {
-            try {
-                val library = json.decodeFromString<MusicLibrary>(jsonText)
-                tracksData = library.tracks.toMutableList()
-                organizeIntoAlbums()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+        // Use pure Java methods - no Kotlin stdlib extensions
+        if (jsonText == null) return
+        if (jsonText.length == 0) return
+        
+        try {
+            val library = json.decodeFromString<MusicLibrary>(jsonText)
+            tracksData = library.tracks.toMutableList()
+            organizeIntoAlbums()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -258,7 +260,6 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
  * 
  * dependencies {
  *     compileOnly(libs.echo.common)
- *     compileOnly(libs.kotlin.stdlib)  // <-- ADD THIS LINE!
  *     
  *     implementation("com.squareup.okhttp3:okhttp:4.11.0")
  *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
@@ -284,10 +285,8 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
  *   ]
  * }
  * 
- * FEATURES:
- * ✅ Normal Kotlin code (no Java workarounds!)
- * ✅ Albums organized on home screen
- * ✅ Full metadata with album art
- * ✅ Streams from Google Drive
- * ✅ Clean, readable code
+ * KEY FIX:
+ * ✅ Uses jsonText.length == 0 instead of .isEmpty() or .isNullOrBlank()
+ * ✅ Avoids ALL Kotlin stdlib string extension functions
+ * ✅ Pure Java-style checks that don't trigger IllegalAccessError
  */
