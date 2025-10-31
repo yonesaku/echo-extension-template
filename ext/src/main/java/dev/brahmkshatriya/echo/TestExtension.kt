@@ -17,6 +17,32 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 
+@Serializable
+data class TrackData(
+    val fileId: String,
+    val title: String,
+    val artist: String,
+    val album: String,
+    val albumArt: String? = null,
+    val year: String? = null,
+    val genre: String? = null,
+    val duration: Long? = null
+)
+
+data class AlbumData(
+    val name: String,
+    val artist: String,
+    val year: String?,
+    val genre: String?,
+    val artwork: String?,
+    val tracks: MutableList<TrackData>
+)
+
+@Serializable
+data class MusicLibrary(
+    val tracks: List<TrackData>
+)
+
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
     private val httpClient = OkHttpClient()
@@ -25,32 +51,6 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     private var tracksData = mutableListOf<TrackData>()
     private val albumsCache = mutableMapOf<String, AlbumData>()
-
-    @Serializable
-    data class TrackData(
-        val fileId: String,
-        val title: String,
-        val artist: String,
-        val album: String,
-        val albumArt: String? = null,
-        val year: String? = null,
-        val genre: String? = null,
-        val duration: Long? = null
-    )
-
-    data class AlbumData(
-        val name: String,
-        val artist: String,
-        val year: String?,
-        val genre: String?,
-        val artwork: String?,
-        val tracks: MutableList<TrackData>
-    )
-
-    @Serializable
-    data class MusicLibrary(
-        val tracks: List<TrackData>
-    )
 
     override suspend fun getSettingItems(): List<Setting> {
         return listOf(
