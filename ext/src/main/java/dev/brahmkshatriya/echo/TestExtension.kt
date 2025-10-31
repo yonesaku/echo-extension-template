@@ -6,12 +6,12 @@ import dev.brahmkshatriya.echo.common.clients.HomeFeedClient
 import dev.brahmkshatriya.echo.common.clients.TrackClient
 import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.models.*
-import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
+import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.SettingCategory
-import dev.brahmkshatriya.echo.common.settings.SettingTextInput
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
+import dev.brahmkshatriya.echo.common.settings.SettingTextInput
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -80,15 +80,15 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     override suspend fun onInitialize() {
-        val jsonText = settings.getString("music_json") ?: return
-        if (jsonText.isEmpty()) return
-        
-        try {
-            val library = json.decodeFromString<MusicLibrary>(jsonText)
-            tracksData = library.tracks.toMutableList()
-            organizeIntoAlbums()
-        } catch (e: Exception) {
-            e.printStackTrace()
+        val jsonText = settings.getString("music_json")
+        if (jsonText != null && jsonText.isNotEmpty()) {
+            try {
+                val library = json.decodeFromString<MusicLibrary>(jsonText)
+                tracksData = library.tracks.toMutableList()
+                organizeIntoAlbums()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -130,10 +130,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
         val parts = mutableListOf<String>()
-        albumData.year?.let { parts.add(it) }
-        albumData.genre?.let { parts.add(it) }
+        if (albumData.year != null) parts.add(albumData.year)
+        if (albumData.genre != null) parts.add(albumData.genre)
         parts.add("${albumData.tracks.size} tracks")
-        return parts.joinToString(" • ")
+        return if (parts.isEmpty()) "" else parts.joinToString(" • ")
     }
 
     override suspend fun loadAlbum(album: Album): Album {
@@ -230,7 +230,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private fun organizeIntoAlbums() {
         albumsCache.clear()
 
-        tracksData.forEach { trackData ->
+        for (trackData in tracksData) {
             val albumName = trackData.album
             val artistName = trackData.artist
 
@@ -252,40 +252,3 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         return "https://drive.google.com/uc?export=download&id=$fileId"
     }
 }
-
-/*
- * DEPENDENCIES in ext/build.gradle.kts:
- * 
- * dependencies {
- *     compileOnly(libs.echo.common)
- *     
- *     implementation("com.squareup.okhttp3:okhttp:4.11.0")
- *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
- *     
- *     testImplementation(libs.junit)
- *     testImplementation(libs.coroutines.test)
- *     testImplementation(libs.echo.common)
- * }
- * 
- * EXAMPLE JSON:
- * {
- *   "tracks": [
- *     {
- *       "fileId": "1ABC123XYZ",
- *       "title": "Hey Jude",
- *       "artist": "The Beatles",
- *       "album": "Hey Jude",
- *       "albumArt": "https://i.imgur.com/heyjude.jpg",
- *       "year": "1968",
- *       "genre": "Rock",
- *       "duration": 431
- *     }
- *   ]
- * }
- * 
- * KEY FIX:
- * ✅ Changed onInitialize() to avoid .isNullOrBlank()
- * ✅ Uses safe null handling: `?: return` then `.isEmpty()`
- * ✅ Follows the pattern from working Spotify extension
- * ✅ No more IllegalAccessError!
- */
