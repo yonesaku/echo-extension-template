@@ -11,6 +11,7 @@ import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
 import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.SettingCategory
 import dev.brahmkshatriya.echo.common.settings.SettingTextInput
+import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -62,6 +63,12 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                         key = "music_json",
                         summary = "Paste your music library JSON here",
                         defaultValue = ""
+                    ),
+                    SettingSwitch(
+                        title = "Enabled",
+                        key = "enabled",
+                        summary = "Enable the extension",
+                        defaultValue = true
                     )
                 )
             )
@@ -73,15 +80,15 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     override suspend fun onInitialize() {
-        val jsonText = settings.getString("music_json") ?: return
-        if (jsonText.isEmpty()) return
-        
-        try {
-            val library = json.decodeFromString<MusicLibrary>(jsonText)
-            tracksData = library.tracks.toMutableList()
-            organizeIntoAlbums()
-        } catch (e: Exception) {
-            e.printStackTrace()
+        val jsonText = settings.getString("music_json")
+        if (!jsonText.isNullOrBlank()) {
+            try {
+                val library = json.decodeFromString<MusicLibrary>(jsonText)
+                tracksData = library.tracks.toMutableList()
+                organizeIntoAlbums()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -117,7 +124,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         return Feed(emptyList()) {
-            PagedData.Single<Shelf> { listOf(shelf) }.toFeedData()
+            PagedData.Single { listOf(shelf) }.toFeedData()
         }
     }
 
@@ -176,6 +183,8 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
+        val directUrl = getDriveDirectUrl(track.id)
+
         return Track(
             id = track.id,
             title = track.title,
@@ -247,18 +256,12 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 /*
  * DEPENDENCIES in ext/build.gradle.kts:
  * 
- * plugins {
- *     id("java-library")
- *     alias(libs.plugins.kotlin.jvm)
- *     alias(libs.plugins.kotlinx.serialization)
- * }
- * 
  * dependencies {
  *     compileOnly(libs.echo.common)
- *     compileOnly(libs.kotlin.stdlib)
+ *     compileOnly(libs.kotlin.stdlib)  // <-- ADD THIS LINE!
  *     
- *     implementation("com.squareup.okhttp3:okhttp:4.12.0")
- *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+ *     implementation("com.squareup.okhttp3:okhttp:4.11.0")
+ *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
  *     
  *     testImplementation(libs.junit)
  *     testImplementation(libs.coroutines.test)
@@ -281,6 +284,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
  *   ]
  * }
  * 
- * This is clean, simple code that should work with java-library plugin.
- * Uses standard Kotlin functions like listOf(), isEmpty(), @Serializable.
+ * FEATURES:
+ * ✅ Normal Kotlin code (no Java workarounds!)
+ * ✅ Albums organized on home screen
+ * ✅ Full metadata with album art
+ * ✅ Streams from Google Drive
+ * ✅ Clean, readable code
  */
