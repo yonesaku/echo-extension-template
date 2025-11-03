@@ -9,9 +9,7 @@ import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
 import dev.brahmkshatriya.echo.common.settings.Setting
-import dev.brahmkshatriya.echo.common.settings.SettingCategory
 import dev.brahmkshatriya.echo.common.settings.SettingTextInput
-import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -54,23 +52,11 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     override suspend fun getSettingItems(): List<Setting> {
         return listOf(
-            SettingCategory(
-                title = "Configuration",
-                key = "config",
-                items = listOf(
-                    SettingTextInput(
-                        title = "Music JSON",
-                        key = "music_json",
-                        summary = "Paste your music library JSON here",
-                        defaultValue = ""
-                    ),
-                    SettingSwitch(
-                        title = "Enabled",
-                        key = "enabled",
-                        summary = "Enable the extension",
-                        defaultValue = true
-                    )
-                )
+            SettingTextInput(
+                title = "Music JSON",
+                key = "music_json",
+                summary = "Paste your music library JSON here",
+                defaultValue = ""
             )
         )
     }
@@ -124,7 +110,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         return Feed(emptyList()) {
-            PagedData.Single { listOf(shelf) }.toFeedData()
+            PagedData.Single<Shelf> { listOf(shelf) }.toFeedData()
         }
     }
 
@@ -183,8 +169,6 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
-        val directUrl = getDriveDirectUrl(track.id)
-
         return Track(
             id = track.id,
             title = track.title,
@@ -254,14 +238,20 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 }
 
 /*
+ * CRITICAL: Add to AndroidManifest.xml:
+ * 
+ * <meta-data
+ *     android:name="preserved_packages"
+ *     android:value="kotlin,kotlinx,okhttp3" />
+ * 
  * DEPENDENCIES in ext/build.gradle.kts:
  * 
  * dependencies {
  *     compileOnly(libs.echo.common)
- *     compileOnly(libs.kotlin.stdlib)  // <-- ADD THIS LINE!
+ *     compileOnly(libs.kotlin.stdlib)
  *     
- *     implementation("com.squareup.okhttp3:okhttp:4.11.0")
- *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+ *     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+ *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
  *     
  *     testImplementation(libs.junit)
  *     testImplementation(libs.coroutines.test)
@@ -284,10 +274,9 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
  *   ]
  * }
  * 
- * FEATURES:
- * ✅ Normal Kotlin code (no Java workarounds!)
- * ✅ Albums organized on home screen
- * ✅ Full metadata with album art
- * ✅ Streams from Google Drive
- * ✅ Clean, readable code
+ * KEY FIXES:
+ * ✅ Removed SettingCategory wrapper (settings show directly)
+ * ✅ Removed unnecessary SettingSwitch
+ * ✅ Added PagedData.Single<Shelf> type parameter
+ * ✅ Uses preserved_packages for Kotlin stdlib access
  */
