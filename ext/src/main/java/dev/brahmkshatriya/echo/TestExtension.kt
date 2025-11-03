@@ -8,11 +8,9 @@ import dev.brahmkshatriya.echo.common.helpers.PagedData
 import dev.brahmkshatriya.echo.common.models.*
 import dev.brahmkshatriya.echo.common.models.ImageHolder.NetworkRequestImageHolder
 import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeedData
-import dev.brahmkshatriya.echo.common.models.Feed.Companion.toFeed
 import dev.brahmkshatriya.echo.common.settings.Setting
 import dev.brahmkshatriya.echo.common.settings.SettingCategory
 import dev.brahmkshatriya.echo.common.settings.SettingTextInput
-import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -24,7 +22,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private lateinit var settings: Settings
     private val json = Json { ignoreUnknownKeys = true }
 
-    private var tracksData = java.util.ArrayList<TrackData>()
+    private var tracksData = mutableListOf<TrackData>()
     private val albumsCache = mutableMapOf<String, AlbumData>()
 
     @Serializable
@@ -54,22 +52,16 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     )
 
     override suspend fun getSettingItems(): List<Setting> {
-        return java.util.Arrays.asList(
+        return listOf(
             SettingCategory(
                 title = "Configuration",
                 key = "config",
-                items = java.util.Arrays.asList(
+                items = listOf(
                     SettingTextInput(
                         title = "Music JSON",
                         key = "music_json",
                         summary = "Paste your music library JSON here",
                         defaultValue = ""
-                    ),
-                    SettingSwitch(
-                        title = "Enabled",
-                        key = "enabled",
-                        summary = "Enable the extension",
-                        defaultValue = true
                     )
                 )
             )
@@ -81,16 +73,15 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     override suspend fun onInitialize() {
-        val jsonText = settings.getString("music_json")
-        if (jsonText != null && jsonText.length > 0) {
-            try {
-                val library = json.decodeFromString<MusicLibrary>(jsonText)
-                tracksData.clear()
-                tracksData.addAll(library.tracks)
-                organizeIntoAlbums()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+        val jsonText = settings.getString("music_json") ?: return
+        if (jsonText.isEmpty()) return
+        
+        try {
+            val library = json.decodeFromString<MusicLibrary>(jsonText)
+            tracksData = library.tracks.toMutableList()
+            organizeIntoAlbums()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -99,63 +90,43 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             organizeIntoAlbums()
         }
 
-        val albumValues = java.util.ArrayList(albumsCache.values)
-        java.util.Collections.sort(albumValues, Comparator { a, b -> a.name.compareTo(b.name) })
-
-        val albums = java.util.ArrayList<Album>()
-        for (albumData in albumValues) {
-            val cover = if (albumData.artwork != null) {
-                NetworkRequestImageHolder(
-                    request = NetworkRequest(url = albumData.artwork, headers = emptyMap()),
-                    crop = false
-                )
-            } else null
-
-            albums.add(
-                Album(
-                    id = albumData.name,
-                    title = albumData.name,
-                    cover = cover,
-                    artists = java.util.Collections.singletonList(
-                        Artist(
-                            id = albumData.artist,
-                            name = albumData.artist
-                        )
-                    ),
-                    subtitle = buildAlbumSubtitle(albumData)
-                )
+        val albums = albumsCache.values.sortedBy { it.name }.map { albumData ->
+            Album(
+                id = albumData.name,
+                title = albumData.name,
+                cover = albumData.artwork?.let { url ->
+                    NetworkRequestImageHolder(
+                        request = NetworkRequest(url = url, headers = emptyMap()),
+                        crop = false
+                    )
+                },
+                artists = listOf(
+                    Artist(
+                        id = albumData.artist,
+                        name = albumData.artist
+                    )
+                ),
+                subtitle = buildAlbumSubtitle(albumData)
             )
         }
 
-        val shelf = Shelf.Lists.Items(
+        val shelf: Shelf = Shelf.Lists.Items(
             id = "albums",
             title = "Albums",
             list = albums
         )
 
-        // Cast to Shelf to fix type mismatch
-        val shelves: List<Shelf> = java.util.Collections.singletonList(shelf as Shelf)
-
-        return Feed(java.util.Collections.emptyList()) { 
-            PagedData.Single { shelves }.toFeedData()
+        return Feed(emptyList()) {
+            PagedData.Single<Shelf> { listOf(shelf) }.toFeedData()
         }
     }
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
-        val parts = java.util.ArrayList<String>()
-        if (albumData.year != null) parts.add(albumData.year)
-        if (albumData.genre != null) parts.add(albumData.genre)
-        parts.add(albumData.tracks.size.toString() + " tracks")
-
-        // Manual join
-        val result = StringBuilder()
-        for (i in 0 until parts.size) {
-            result.append(parts[i])
-            if (i < parts.size - 1) {
-                result.append(" • ")
-            }
-        }
-        return result.toString()
+        val parts = mutableListOf<String>()
+        albumData.year?.let { parts.add(it) }
+        albumData.genre?.let { parts.add(it) }
+        parts.add("${albumData.tracks.size} tracks")
+        return parts.joinToString(" • ")
     }
 
     override suspend fun loadAlbum(album: Album): Album {
@@ -167,53 +138,44 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     }
 
     override suspend fun loadTracks(album: Album): Feed<Track>? {
-        val albumData = albumsCache[album.id]
-        if (albumData == null) return null
+        val albumData = albumsCache[album.id] ?: return null
 
-        val tracks = java.util.ArrayList<Track>()
-        for (trackData in albumData.tracks) {
-            val albumCover = if (albumData.artwork != null) {
-                NetworkRequestImageHolder(
-                    request = NetworkRequest(url = albumData.artwork, headers = emptyMap()),
-                    crop = false
-                )
-            } else null
-
-            val trackCover = if (trackData.albumArt != null) {
-                NetworkRequestImageHolder(
-                    request = NetworkRequest(url = trackData.albumArt, headers = emptyMap()),
-                    crop = false
-                )
-            } else null
-
-            tracks.add(
-                Track(
-                    id = trackData.fileId,
-                    title = trackData.title,
-                    artists = java.util.Collections.singletonList(
-                        Artist(
-                            id = trackData.artist,
-                            name = trackData.artist
+        val tracks = albumData.tracks.map { trackData ->
+            Track(
+                id = trackData.fileId,
+                title = trackData.title,
+                artists = listOf(
+                    Artist(
+                        id = trackData.artist,
+                        name = trackData.artist
+                    )
+                ),
+                album = Album(
+                    id = albumData.name,
+                    title = albumData.name,
+                    cover = albumData.artwork?.let { url ->
+                        NetworkRequestImageHolder(
+                            request = NetworkRequest(url = url, headers = emptyMap()),
+                            crop = false
                         )
-                    ),
-                    album = Album(
-                        id = albumData.name,
-                        title = albumData.name,
-                        cover = albumCover
-                    ),
-                    duration = trackData.duration,
-                    cover = trackCover
-                )
+                    }
+                ),
+                duration = trackData.duration,
+                cover = trackData.albumArt?.let { url ->
+                    NetworkRequestImageHolder(
+                        request = NetworkRequest(url = url, headers = emptyMap()),
+                        crop = false
+                    )
+                }
             )
         }
 
-        val pagedData = PagedData.Single<Track> { tracks }
-        return pagedData.toFeed()
+        return Feed(emptyList()) {
+            PagedData.Single { tracks }.toFeedData()
+        }
     }
 
     override suspend fun loadTrack(track: Track, isDownload: Boolean): Track {
-        val directUrl = getDriveDirectUrl(track.id)
-
         return Track(
             id = track.id,
             title = track.title,
@@ -242,7 +204,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         )
 
         return Streamable.Media.Server(
-            sources = java.util.Collections.singletonList(
+            sources = listOf(
                 Streamable.Source.Http(
                     request = networkRequest,
                     type = Streamable.SourceType.Progressive
@@ -259,7 +221,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private fun organizeIntoAlbums() {
         albumsCache.clear()
 
-        for (trackData in tracksData) {
+        tracksData.forEach { trackData ->
             val albumName = trackData.album
             val artistName = trackData.artist
 
@@ -270,7 +232,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                     year = trackData.year,
                     genre = trackData.genre,
                     artwork = trackData.albumArt,
-                    tracks = java.util.ArrayList()
+                    tracks = mutableListOf()
                 )
             }
             albumData.tracks.add(trackData)
@@ -283,12 +245,27 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 }
 
 /*
- * DEPENDENCIES in build.gradle.kts:
- * implementation("com.squareup.okhttp3:okhttp:4.11.0")
- * implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+ * DEPENDENCIES in ext/build.gradle.kts:
  * 
- * EXAMPLE JSON TO PASTE IN SETTINGS:
+ * plugins {
+ *     id("java-library")
+ *     alias(libs.plugins.kotlin.jvm)
+ *     alias(libs.plugins.kotlinx.serialization)
+ * }
  * 
+ * dependencies {
+ *     compileOnly(libs.echo.common)
+ *     compileOnly(libs.kotlin.stdlib)
+ *     
+ *     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+ *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+ *     
+ *     testImplementation(libs.junit)
+ *     testImplementation(libs.coroutines.test)
+ *     testImplementation(libs.echo.common)
+ * }
+ * 
+ * EXAMPLE JSON:
  * {
  *   "tracks": [
  *     {
@@ -304,12 +281,6 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
  *   ]
  * }
  * 
- * NOTE: Duration should be in SECONDS (not milliseconds)
- * 
- * FEATURES:
- * ✅ JSON-based metadata (no file scanning needed)
- * ✅ Album art from URLs
- * ✅ Streams directly from Google Drive
- * ✅ Organized by albums on home screen
- * ✅ Full metadata support (title, artist, album, year, genre, duration)
+ * This is clean, simple code that should work with java-library plugin.
+ * Uses standard Kotlin functions like listOf(), isEmpty(), @Serializable.
  */
