@@ -43,5 +43,9 @@
         <meta-data
             android:name="update_url"
             android:value="${update_url}" />
+        
+        <meta-data
+            android:name="preserved_packages"
+            android:value="kotlin,kotlinx,okhttp3" />
     </application>
 </manifest>
