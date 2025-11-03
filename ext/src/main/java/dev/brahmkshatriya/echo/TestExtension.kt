@@ -13,10 +13,8 @@ import dev.brahmkshatriya.echo.common.settings.SettingCategory
 import dev.brahmkshatriya.echo.common.settings.SettingTextInput
 import dev.brahmkshatriya.echo.common.settings.SettingSwitch
 import dev.brahmkshatriya.echo.common.settings.Settings
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
@@ -28,6 +26,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private var tracksData = mutableListOf<TrackData>()
     private val albumsCache = mutableMapOf<String, AlbumData>()
 
+    @Serializable
     data class TrackData(
         val fileId: String,
         val title: String,
@@ -48,28 +47,32 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         val tracks: MutableList<TrackData>
     )
 
+    @Serializable
+    data class MusicLibrary(
+        val tracks: List<TrackData>
+    )
+
     override suspend fun getSettingItems(): List<Setting> {
-        val settings = ArrayList<Setting>()
-        val categoryItems = ArrayList<Setting>()
-        
-        categoryItems.add(
-            SettingTextInput(
-                title = "Music JSON",
-                key = "music_json",
-                summary = "Paste your music library JSON here",
-                defaultValue = ""
-            )
-        )
-        
-        settings.add(
+        return listOf(
             SettingCategory(
                 title = "Configuration",
-                key = "config_category",
-                items = categoryItems
+                key = "config",
+                items = listOf(
+                    SettingTextInput(
+                        title = "Music JSON",
+                        key = "music_json",
+                        summary = "Paste your music library JSON here",
+                        defaultValue = ""
+                    ),
+                    SettingSwitch(
+                        title = "Enabled",
+                        key = "enabled",
+                        summary = "Enable the extension",
+                        defaultValue = true
+                    )
+                )
             )
         )
-        
-        return settings
     }
 
     override fun setSettings(settings: Settings) {
@@ -78,44 +81,14 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     override suspend fun onInitialize() {
         val jsonText = settings.getString("music_json")
-        if (jsonText == null) return
-        if (jsonText.length == 0) return
-        
-        try {
-            // Manual JSON parsing to avoid @Serializable issues
-            val jsonElement = json.parseToJsonElement(jsonText).jsonObject
-            val tracksArray = jsonElement["tracks"]?.jsonArray ?: return
-            
-            tracksData.clear()
-            for (trackElement in tracksArray) {
-                val track = trackElement.jsonObject
-                
-                // Manual toLong conversion to avoid Kotlin stdlib
-                val durationStr = track["duration"]?.jsonPrimitive?.content
-                var duration: Long? = null
-                if (durationStr != null) {
-                    try {
-                        duration = java.lang.Long.parseLong(durationStr)
-                    } catch (e: NumberFormatException) {
-                        duration = null
-                    }
-                }
-                
-                val trackData = TrackData(
-                    fileId = track["fileId"]?.jsonPrimitive?.content ?: continue,
-                    title = track["title"]?.jsonPrimitive?.content ?: "",
-                    artist = track["artist"]?.jsonPrimitive?.content ?: "",
-                    album = track["album"]?.jsonPrimitive?.content ?: "",
-                    albumArt = track["albumArt"]?.jsonPrimitive?.content,
-                    year = track["year"]?.jsonPrimitive?.content,
-                    genre = track["genre"]?.jsonPrimitive?.content,
-                    duration = duration
-                )
-                tracksData.add(trackData)
+        if (!jsonText.isNullOrBlank()) {
+            try {
+                val library = json.decodeFromString<MusicLibrary>(jsonText)
+                tracksData = library.tracks.toMutableList()
+                organizeIntoAlbums()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            organizeIntoAlbums()
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
@@ -144,14 +117,14 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             )
         }
 
-        val shelf: Shelf = Shelf.Lists.Items(
+        val shelf = Shelf.Lists.Items(
             id = "albums",
             title = "Albums",
             list = albums
         )
 
         return Feed(emptyList()) {
-            PagedData.Single { listOf<Shelf>(shelf) }.toFeedData()
+            PagedData.Single { listOf(shelf) }.toFeedData()
         }
     }
 
@@ -285,6 +258,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
  * 
  * dependencies {
  *     compileOnly(libs.echo.common)
+ *     compileOnly(libs.kotlin.stdlib)  // <-- ADD THIS LINE!
  *     
  *     implementation("com.squareup.okhttp3:okhttp:4.11.0")
  *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
@@ -310,9 +284,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
  *   ]
  * }
  * 
- * KEY FIXES:
- * ✅ Removed @Serializable annotations (they generate lazy code that triggers IllegalAccessError)
- * ✅ Manual JSON parsing using kotlinx.json primitives
- * ✅ Uses only safe String operations (.length, not .isEmpty())
- * ✅ No Kotlin stdlib string extensions
+ * FEATURES:
+ * ✅ Normal Kotlin code (no Java workarounds!)
+ * ✅ Albums organized on home screen
+ * ✅ Full metadata with album art
+ * ✅ Streams from Google Drive
+ * ✅ Clean, readable code
  */
