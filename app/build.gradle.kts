@@ -6,7 +6,7 @@ plugins {
 dependencies {
     implementation(project(":ext"))
     compileOnly(libs.echo.common)
-    implementation(libs.kotlin.stdlib)
+    compileOnly(libs.kotlin.stdlib)
 }
 
 java {
