@@ -10,8 +10,8 @@ dependencies {
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
     
-    implementation("com.squareup.okhttp3:okhttp:5.2.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    compileOnly("com.squareup.okhttp3:okhttp:5.2.1")
+    compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
