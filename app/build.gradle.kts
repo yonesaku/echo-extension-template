@@ -32,6 +32,9 @@ val extAuthorUrl: String? by project
 val extRepoUrl: String? by project
 val extUpdateUrl: String? by project
 
+// ADD THIS LINE
+val extPreservedPackages: String? by project
+
 val gitHash = execute("git", "rev-parse", "HEAD").take(7)
 val gitCount = execute("git", "rev-list", "--count", "HEAD").toInt()
 val verCode = gitCount
@@ -79,6 +82,8 @@ android {
             put("author_url", extAuthorUrl ?: "")
             put("repo_url", extRepoUrl ?: "")
             put("update_url", extUpdateUrl ?: "")
+            // ADD THIS LINE
+            put("preserved_packages", extPreservedPackages ?: "")
         }
     }
 
