@@ -83,7 +83,12 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
             organizeIntoAlbums()
         }
 
-        val albums = albumsCache.values.sortedBy { it.name }.map { albumData ->
+        // Use Java Collections.sort instead of Kotlin's sortedBy
+        val albumList = albumsCache.values.toList()
+        val sortedAlbums = java.util.ArrayList(albumList)
+        java.util.Collections.sort(sortedAlbums) { a, b -> a.name.compareTo(b.name) }
+        
+        val albums = sortedAlbums.map { albumData ->
             Album(
                 id = albumData.name,
                 title = albumData.name,
@@ -189,7 +194,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         streamable: Streamable,
         isDownload: Boolean
     ): Streamable.Media {
-        val directUrl = getDriveDirectUrl(streamable.id)
+        val directUrl = getDropboxStreamUrl(streamable.id)
 
         val networkRequest = NetworkRequest(
             url = directUrl,
@@ -232,41 +237,45 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         }
     }
 
-    private fun getDriveDirectUrl(fileId: String): String {
-        return "https://drive.google.com/uc?export=download&id=$fileId"
+    private fun getDropboxStreamUrl(shareUrl: String): String {
+        // Convert Dropbox share link to direct streaming link
+        // Input: https://www.dropbox.com/s/xxxxxxxx/file.mp3?dl=0
+        // Output: https://www.dropbox.com/s/xxxxxxxx/file.mp3?raw=1
+        return shareUrl.replace("?dl=0", "?raw=1")
+            .replace("dl=0", "raw=1")
     }
 }
 
 /*
- * CRITICAL: Add to AndroidManifest.xml:
+ * DROPBOX STREAMING SETUP:
  * 
- * <meta-data
- *     android:name="preserved_packages"
- *     android:value="kotlin,kotlinx,okhttp3" />
+ * 1. Upload your music files to Dropbox
+ * 2. Share each file and get the link
+ * 3. Link will look like: https://www.dropbox.com/s/xxxxxxxx/song.mp3?dl=0
+ * 4. Use this EXACT link in your JSON (extension auto-converts to ?raw=1)
  * 
  * DEPENDENCIES in ext/build.gradle.kts:
  * 
  * dependencies {
  *     compileOnly(libs.echo.common)
  *     compileOnly(libs.kotlin.stdlib)
- *     
- *     implementation("com.squareup.okhttp3:okhttp:4.12.0")
- *     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+ *     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
+ *     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
  *     
  *     testImplementation(libs.junit)
  *     testImplementation(libs.coroutines.test)
  *     testImplementation(libs.echo.common)
  * }
  * 
- * EXAMPLE JSON:
+ * EXAMPLE JSON (use full Dropbox share URLs):
  * {
  *   "tracks": [
  *     {
- *       "fileId": "1ABC123XYZ",
+ *       "fileId": "https://www.dropbox.com/s/abc123/song.mp3?dl=0",
  *       "title": "Hey Jude",
  *       "artist": "The Beatles",
  *       "album": "Hey Jude",
- *       "albumArt": "https://i.imgur.com/heyjude.jpg",
+ *       "albumArt": "https://www.dropbox.com/s/xyz789/cover.jpg?raw=1",
  *       "year": "1968",
  *       "genre": "Rock",
  *       "duration": 431
@@ -274,9 +283,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
  *   ]
  * }
  * 
- * KEY FIXES:
- * ✅ Removed SettingCategory wrapper (settings show directly)
- * ✅ Removed unnecessary SettingSwitch
- * ✅ Added PagedData.Single<Shelf> type parameter
- * ✅ Uses preserved_packages for Kotlin stdlib access
+ * KEY FEATURES:
+ * ✅ Uses Dropbox direct streaming (?raw=1)
+ * ✅ Should avoid persistent caching
+ * ✅ 2GB free storage
+ * ✅ fileId is the full Dropbox share URL
+ * ✅ Extension automatically converts ?dl=0 to ?raw=1
  */
