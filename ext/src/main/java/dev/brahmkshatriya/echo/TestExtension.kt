@@ -14,6 +14,7 @@ import dev.brahmkshatriya.echo.common.settings.Settings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import okhttp3.Request
 
 class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumClient {
 
@@ -21,41 +22,57 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
     private lateinit var settings: Settings
     private val json = Json { ignoreUnknownKeys = true }
 
-    private var tracksData = mutableListOf<TrackData>()
     private val albumsCache = mutableMapOf<String, AlbumData>()
+    
+    // ** REPLACE WITH YOUR GOOGLE API KEY **
+    private val GOOGLE_API_KEY = "AIzaSyDlkrWAvE3h5I5ZxdkmJSM4zZ5R9brY7Y4"
+    private val DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 
     @Serializable
-    data class TrackData(
-        val fileId: String,
-        val title: String,
+    data class AlbumConfig(
+        val folderId: String,
         val artist: String,
         val album: String,
         val albumArt: String? = null,
         val year: String? = null,
-        val genre: String? = null,
-        val duration: Long? = null
-    )
-
-    data class AlbumData(
-        val name: String,
-        val artist: String,
-        val year: String?,
-        val genre: String?,
-        val artwork: String?,
-        val tracks: MutableList<TrackData>
+        val genre: String? = null
     )
 
     @Serializable
     data class MusicLibrary(
-        val tracks: List<TrackData>
+        val albums: List<AlbumConfig>
+    )
+
+    data class TrackData(
+        val fileId: String,
+        val title: String,
+        val trackNumber: Int?,
+        val duration: Long? = null
+    )
+
+    data class AlbumData(
+        val config: AlbumConfig,
+        val tracks: MutableList<TrackData>
+    )
+
+    @Serializable
+    data class DriveFileList(
+        val files: List<DriveFile>
+    )
+
+    @Serializable
+    data class DriveFile(
+        val id: String,
+        val name: String,
+        val mimeType: String
     )
 
     override suspend fun getSettingItems(): List<Setting> {
         return listOf(
             SettingTextInput(
-                title = "Music JSON",
+                title = "Music Library JSON",
                 key = "music_json",
-                summary = "Paste your music library JSON here",
+                summary = "Paste your albums JSON here",
                 defaultValue = ""
             )
         )
@@ -70,29 +87,64 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         if (!jsonText.isNullOrBlank()) {
             try {
                 val library = json.decodeFromString<MusicLibrary>(jsonText)
-                tracksData = library.tracks.toMutableList()
-                organizeIntoAlbums()
+                
+                // For each album, fetch files from Drive
+                library.albums.forEach { albumConfig ->
+                    val files = listFilesInFolder(albumConfig.folderId)
+                    val tracks = files
+                        .filter { it.mimeType.contains("audio") || it.name.endsWith(".mp3") }
+                        .mapNotNull { parseTrackFromFilename(it) }
+                        .sortedBy { it.trackNumber ?: 999 }
+                    
+                    if (tracks.isNotEmpty()) {
+                        albumsCache[albumConfig.album] = AlbumData(
+                            config = albumConfig,
+                            tracks = tracks.toMutableList()
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
 
-    override suspend fun loadHomeFeed(): Feed<Shelf> {
-        if (albumsCache.isEmpty()) {
-            organizeIntoAlbums()
-        }
-
-        // Use Java Collections.sort instead of Kotlin's sortedBy
-        val albumList = albumsCache.values.toList()
-        val sortedAlbums = java.util.ArrayList(albumList)
-        java.util.Collections.sort(sortedAlbums) { a, b -> a.name.compareTo(b.name) }
+    private suspend fun listFilesInFolder(folderId: String): List<DriveFile> {
+        val url = "$DRIVE_API_BASE/files?" +
+                "q='$folderId'+in+parents&" +
+                "fields=files(id,name,mimeType)&" +
+                "key=$GOOGLE_API_KEY"
         
-        val albums = sortedAlbums.map { albumData ->
+        val request = Request.Builder().url(url).build()
+        val response = httpClient.newCall(request).execute()
+        val body = response.body?.string() ?: return emptyList()
+        
+        return json.decodeFromString<DriveFileList>(body).files
+    }
+
+    private fun parseTrackFromFilename(file: DriveFile): TrackData? {
+        val name = file.name.removeSuffix(".mp3").removeSuffix(".m4a")
+        
+        // Try to parse "01 - Track Title" format
+        val regex = Regex("^(\\d+)\\s*[-.]\\s*(.+)$")
+        val match = regex.find(name)
+        
+        return if (match != null) {
+            val trackNum = match.groupValues[1].toIntOrNull()
+            val title = match.groupValues[2].trim()
+            TrackData(file.id, title, trackNum)
+        } else {
+            // No track number, use filename as title
+            TrackData(file.id, name, null)
+        }
+    }
+
+    override suspend fun loadHomeFeed(): Feed<Shelf> {
+        val albums = albumsCache.values.sortedBy { it.config.album }.map { albumData ->
             Album(
-                id = albumData.name,
-                title = albumData.name,
-                cover = albumData.artwork?.let { url ->
+                id = albumData.config.album,
+                title = albumData.config.album,
+                cover = albumData.config.albumArt?.let { url ->
                     NetworkRequestImageHolder(
                         request = NetworkRequest(url = url, headers = emptyMap()),
                         crop = false
@@ -100,8 +152,8 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                 },
                 artists = listOf(
                     Artist(
-                        id = albumData.artist,
-                        name = albumData.artist
+                        id = albumData.config.artist,
+                        name = albumData.config.artist
                     )
                 ),
                 subtitle = buildAlbumSubtitle(albumData)
@@ -121,8 +173,8 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
 
     private fun buildAlbumSubtitle(albumData: AlbumData): String {
         val parts = mutableListOf<String>()
-        albumData.year?.let { parts.add(it) }
-        albumData.genre?.let { parts.add(it) }
+        albumData.config.year?.let { parts.add(it) }
+        albumData.config.genre?.let { parts.add(it) }
         parts.add("${albumData.tracks.size} tracks")
         return parts.joinToString(" • ")
     }
@@ -144,14 +196,14 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                 title = trackData.title,
                 artists = listOf(
                     Artist(
-                        id = trackData.artist,
-                        name = trackData.artist
+                        id = albumData.config.artist,
+                        name = albumData.config.artist
                     )
                 ),
                 album = Album(
-                    id = albumData.name,
-                    title = albumData.name,
-                    cover = albumData.artwork?.let { url ->
+                    id = albumData.config.album,
+                    title = albumData.config.album,
+                    cover = albumData.config.albumArt?.let { url ->
                         NetworkRequestImageHolder(
                             request = NetworkRequest(url = url, headers = emptyMap()),
                             crop = false
@@ -159,7 +211,7 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
                     }
                 ),
                 duration = trackData.duration,
-                cover = trackData.albumArt?.let { url ->
+                cover = albumData.config.albumArt?.let { url ->
                     NetworkRequestImageHolder(
                         request = NetworkRequest(url = url, headers = emptyMap()),
                         crop = false
@@ -194,10 +246,10 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         streamable: Streamable,
         isDownload: Boolean
     ): Streamable.Media {
-        val directUrl = getDropboxStreamUrl(streamable.id)
+        val streamUrl = getDriveApiStreamUrl(streamable.id)
 
         val networkRequest = NetworkRequest(
-            url = directUrl,
+            url = streamUrl,
             headers = emptyMap()
         )
 
@@ -216,77 +268,45 @@ class DriveLinkExtension : ExtensionClient, HomeFeedClient, TrackClient, AlbumCl
         return null
     }
 
-    private fun organizeIntoAlbums() {
-        albumsCache.clear()
-
-        tracksData.forEach { trackData ->
-            val albumName = trackData.album
-            val artistName = trackData.artist
-
-            val albumData = albumsCache.getOrPut(albumName) {
-                AlbumData(
-                    name = albumName,
-                    artist = artistName,
-                    year = trackData.year,
-                    genre = trackData.genre,
-                    artwork = trackData.albumArt,
-                    tracks = mutableListOf()
-                )
-            }
-            albumData.tracks.add(trackData)
-        }
-    }
-
-    private fun getDropboxStreamUrl(shareUrl: String): String {
-        // Convert Dropbox share link to direct streaming link
-        // Input: https://www.dropbox.com/s/xxxxxxxx/file.mp3?dl=0
-        // Output: https://www.dropbox.com/s/xxxxxxxx/file.mp3?raw=1
-        return shareUrl.replace("?dl=0", "?raw=1")
-            .replace("dl=0", "raw=1")
+    private fun getDriveApiStreamUrl(fileId: String): String {
+        return "$DRIVE_API_BASE/files/$fileId?alt=media&key=$GOOGLE_API_KEY"
     }
 }
 
 /*
- * DROPBOX STREAMING SETUP:
+ * GOOGLE DRIVE API SETUP:
  * 
- * 1. Upload your music files to Dropbox
- * 2. Share each file and get the link
- * 3. Link will look like: https://www.dropbox.com/s/xxxxxxxx/song.mp3?dl=0
- * 4. Use this EXACT link in your JSON (extension auto-converts to ?raw=1)
+ * 1. Go to https://console.cloud.google.com/
+ * 2. Create project & enable Google Drive API
+ * 3. Create API Key (Credentials → API Key)
+ * 4. Replace GOOGLE_API_KEY above with your key
+ * 5. Organize music in Drive folders (one folder per album)
+ * 6. Name files: "01 - Track Title.mp3" or "Track Title.mp3"
  * 
- * DEPENDENCIES in ext/build.gradle.kts:
+ * DEPENDENCIES (already have these):
+ * compileOnly(libs.echo.common)
+ * compileOnly(libs.kotlin.stdlib)
+ * compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
+ * compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
  * 
- * dependencies {
- *     compileOnly(libs.echo.common)
- *     compileOnly(libs.kotlin.stdlib)
- *     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
- *     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
- *     
- *     testImplementation(libs.junit)
- *     testImplementation(libs.coroutines.test)
- *     testImplementation(libs.echo.common)
- * }
- * 
- * EXAMPLE JSON (use full Dropbox share URLs):
+ * EXAMPLE JSON (MUCH SIMPLER!):
  * {
- *   "tracks": [
+ *   "albums": [
  *     {
- *       "fileId": "https://www.dropbox.com/s/abc123/song.mp3?dl=0",
- *       "title": "Hey Jude",
+ *       "folderId": "1ABC123XYZ",
  *       "artist": "The Beatles",
- *       "album": "Hey Jude",
- *       "albumArt": "https://www.dropbox.com/s/xyz789/cover.jpg?raw=1",
- *       "year": "1968",
- *       "genre": "Rock",
- *       "duration": 431
+ *       "album": "Abbey Road",
+ *       "albumArt": "https://drive.google.com/uc?export=view&id=1IMG123",
+ *       "year": "1969",
+ *       "genre": "Rock"
  *     }
  *   ]
  * }
  * 
- * KEY FEATURES:
- * ✅ Uses Dropbox direct streaming (?raw=1)
- * ✅ Should avoid persistent caching
- * ✅ 2GB free storage
- * ✅ fileId is the full Dropbox share URL
- * ✅ Extension automatically converts ?dl=0 to ?raw=1
+ * FEATURES:
+ * ✅ Auto-lists files from Drive folders
+ * ✅ Parses track numbers from filenames
+ * ✅ Uses Drive API for streaming with range requests
+ * ✅ One JSON entry per album (not per track!)
+ * ✅ Automatically organizes by track number
  */
